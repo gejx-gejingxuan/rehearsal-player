@@ -89,6 +89,18 @@ select.ctl{padding:5px 6px}
   display:flex; gap:10px; padding:10px 12px; overflow-x:auto; overflow-y:hidden;
   min-height:150px; background:var(--strip);
 }
+#editBar{
+  display:none; align-items:center; gap:8px; padding:8px 12px;
+  border-top:1px solid var(--border); background:var(--control);
+}
+#editBar.show{display:flex}
+#editName{
+  flex:0 0 220px; padding:5px 10px; border:1px solid var(--border);
+  border-radius:7px; font-size:13px; font-family:inherit; color:var(--text);
+}
+.eb{font-size:12px; color:var(--text-dim)}
+.ebv{font-size:12px; color:var(--text-dim); min-width:34px; font-variant-numeric:tabular-nums}
+#editVol{width:90px; accent-color:var(--accent)}
 .card{
   flex:0 0 200px; display:flex; flex-direction:column; align-items:flex-start; gap:8px;
   padding:14px 16px; border-radius:12px; cursor:pointer; text-align:left;
@@ -173,8 +185,8 @@ kbd{
     </div>
     <span id="timeLabel">00:00 / 00:00</span>
     <span class="sep"></span>
-    <button class="ctl" id="btnPrev" title="上一个片段 (Alt+左键)">◀</button>
-    <button class="ctl" id="btnNext" title="下一个片段 (Alt+右键)">▶</button>
+    <button class="ctl" id="btnPrev" title="上一个 (Alt+左键)">◀</button>
+    <button class="ctl" id="btnNext" title="下一个 (Alt+右键)">▶</button>
     <span id="posLabel">0/0</span>
     <span id="nameLabel"></span>
     <span class="sep"></span>
@@ -191,10 +203,25 @@ kbd{
     <button class="ctl" id="btnSetB" title="B 点 = 当前时间 (B)">定 B</button>
     <button class="ctl" id="btnClearAB" title="清除 AB (X)">清 AB</button>
     <span class="sep"></span>
-    <button class="ctl" id="btnFull" title="全屏，无底栏 (F / 双击画面)">⛶ 全屏</button>
-    <button class="ctl" id="btnHalf" title="半全屏，保留底栏 (G)">▣ 半全屏</button>
+    <button class="ctl" id="btnFull" title="全屏 (F / 双击画面)">⛶ 全屏</button>
   </div>
   <div id="strip"></div>
+  <div id="editBar">
+    <input type="text" id="editName" placeholder="片段名称" maxlength="60">
+    <label class="eb">音量</label>
+    <input type="range" id="editVol" min="0" max="100">
+    <span class="ebv" id="editVolVal"></span>
+    <label class="eb">速度</label>
+    <select class="ctl" id="editSpeed">
+      <option value="0.5">0.5×</option><option value="0.75">0.75×</option>
+      <option value="1">1×</option><option value="1.25">1.25×</option>
+      <option value="1.5">1.5×</option><option value="1.75">1.75×</option><option value="2">2×</option>
+    </select>
+    <span class="sep"></span>
+    <button class="ctl" id="btnUp" title="上移">↑</button>
+    <button class="ctl" id="btnDown" title="下移">↓</button>
+    <button class="ctl" id="btnDel" title="删除">删除</button>
+  </div>
 </div>
 
 <div id="toast"></div>
@@ -204,17 +231,16 @@ kbd{
     <button class="close" id="btnHelpClose">✕</button>
     <h2>快捷键</h2>
     <table>
-      <tr><td><kbd>1</kbd>～<kbd>9</kbd> / <kbd>0</kbd></td><td>切换到第 1～9 / 第 10 个片段</td></tr>
-      <tr><td><kbd>空格</kbd></td><td>播放 / 暂停（单击画面同样有效）</td></tr>
-      <tr><td><kbd>F</kbd> / 双击画面</td><td>全屏播放（隐藏底栏）</td></tr>
-      <tr><td><kbd>G</kbd></td><td>半全屏（保留底栏卡片）</td></tr>
+      <tr><td><kbd>1</kbd>～<kbd>9</kbd> / <kbd>0</kbd></td><td>切换片段</td></tr>
+      <tr><td><kbd>空格</kbd></td><td>播放 / 暂停</td></tr>
+      <tr><td><kbd>F</kbd> / 双击画面</td><td>全屏</td></tr>
       <tr><td><kbd>Esc</kbd></td><td>退出全屏</td></tr>
-      <tr><td><kbd>Alt</kbd>+<kbd>左键</kbd> / <kbd>右键</kbd></td><td>上一个 / 下一个片段</td></tr>
+      <tr><td><kbd>Alt</kbd>+<kbd>左键</kbd> / <kbd>右键</kbd></td><td>上一个 / 下一个</td></tr>
       <tr><td><kbd>←</kbd> / <kbd>→</kbd></td><td>快退 / 快进 5 秒</td></tr>
-      <tr><td><kbd>↑</kbd> / <kbd>↓</kbd> 或 滚轮</td><td>音量增大 / 减小</td></tr>
-      <tr><td><kbd>M</kbd></td><td>静音 / 取消静音</td></tr>
-      <tr><td><kbd>A</kbd> / <kbd>B</kbd> / <kbd>X</kbd></td><td>设 A 点 / 设 B 点 / 清除 AB</td></tr>
-      <tr><td><kbd>L</kbd> / <kbd>N</kbd></td><td>循环开关 / 连播开关</td></tr>
+      <tr><td><kbd>↑</kbd> / <kbd>↓</kbd> / 滚轮</td><td>音量</td></tr>
+      <tr><td><kbd>M</kbd></td><td>静音</td></tr>
+      <tr><td><kbd>A</kbd> / <kbd>B</kbd> / <kbd>X</kbd></td><td>AB：起点 / 终点 / 清除</td></tr>
+      <tr><td><kbd>L</kbd> / <kbd>N</kbd></td><td>循环 / 连播</td></tr>
     </table>
   </div>
 </div>
@@ -224,6 +250,7 @@ kbd{
 const $ = s => document.querySelector(s);
 const video = $('#video'), stage = $('#stage'), strip = $('#strip');
 const image = $('#image');
+const editBar = $('#editBar'), editName = $('#editName'), editVol = $('#editVol'), editVolVal = $('#editVolVal'), editSpeed = $('#editSpeed');
 const progress = $('#progress'), timeLabel = $('#timeLabel');
 const nameLabel = $('#nameLabel'), posLabel = $('#posLabel');
 const volume = $('#volume'), speedSel = $('#speed');
@@ -281,7 +308,7 @@ function addFiles(files){
   for(const f of list){
     const url = URL.createObjectURL(f);
     const type = videoExt.test(f.name) ? 'video' : 'image';
-    clips.push({ name:f.name, url, duration:NaN, type });
+    clips.push({ name:f.name, url, duration:NaN, type, label:null, vol:video.volume, speed:parseFloat(speedSel.value) });
   }
   renderStrip();
   measureDurations(clips.length - list.length, list.length);
@@ -314,9 +341,9 @@ function renderStrip(){
     const key = i < 9 ? String(i+1) : (i === 9 ? '0' : '');
     d.className = 'card' + (i === cur ? ' active' : '');
     d.style.setProperty('--c', col);
-    d.title = c.name + (key ? '（快捷键 ' + key + '）' : '');
+    d.title = (c.label || c.name) + (key ? '（快捷键 ' + key + '）' : '');
     const b = document.createElement('span'); b.className='badge'; b.textContent = String(i+1);
-    const n = document.createElement('span'); n.className='name'; n.textContent = c.name;
+    const n = document.createElement('span'); n.className='name'; n.textContent = c.label || c.name;
     const t = document.createElement('span'); t.className='dur';
     t.textContent = c.type === 'image' ? '图片' : (isFinite(c.duration) ? fmt(c.duration) : '--:--');
     d.appendChild(b); d.appendChild(n); d.appendChild(t);
@@ -345,7 +372,11 @@ function loadClip(i, autoplay){
     video.style.display = 'block';
     progress.disabled = false;
     if(video.getAttribute('src') !== c.url){ video.src = c.url; }
-    video.playbackRate = parseFloat(speedSel.value);
+    video.volume = (c.vol != null) ? c.vol : (volume.value / 100);
+    video.playbackRate = c.speed || parseFloat(speedSel.value);
+    volume.value = Math.round(video.volume * 100);
+    speedSel.value = String(video.playbackRate);
+    syncVol();
     if(autoplay) video.play().catch(()=>{});
   }
   renderStrip();
@@ -353,6 +384,46 @@ function loadClip(i, autoplay){
   if(cards[i]) cards[i].scrollIntoView({block:'nearest', inline:'nearest'});
   updateInfo();
   syncPlayIcon();
+  syncEditBar();
+}
+function syncEditBar(){
+  const c = clips[cur];
+  if(cur >= 0 && c){
+    editBar.classList.add('show');
+    editName.value = c.label || c.name;
+    editVol.value = Math.round((c.vol != null ? c.vol : volume.value/100) * 100);
+    editVolVal.textContent = editVol.value + '%';
+    editSpeed.value = String(c.speed || speedSel.value);
+  } else {
+    editBar.classList.remove('show');
+  }
+}
+function moveClip(delta){
+  if(cur < 0) return;
+  const ni = cur + delta;
+  if(ni < 0 || ni >= clips.length) return;
+  const tmp = clips[cur]; clips[cur] = clips[ni]; clips[ni] = tmp;
+  cur = ni;
+  renderStrip(); updateInfo(); syncEditBar();
+  const cards = strip.children;
+  if(cards[cur]) cards[cur].scrollIntoView({block:'nearest', inline:'nearest'});
+}
+function removeClip(){
+  if(cur < 0) return;
+  const c = clips[cur];
+  try{ URL.revokeObjectURL(c.url); }catch(e){}
+  clearTimeout(imgTimer);
+  clips.splice(cur, 1);
+  if(clips.length === 0){
+    cur = -1;
+    video.pause(); video.removeAttribute('src'); video.style.display = 'block';
+    image.style.display = 'none'; image.removeAttribute('src');
+    progress.disabled = false;
+    $('#empty').style.display = 'flex';
+  } else {
+    loadClip(Math.min(cur, clips.length - 1), true);
+  }
+  renderStrip(); updateInfo(); syncEditBar();
 }
 function armImageTimer(){
   clearTimeout(imgTimer);
@@ -388,6 +459,7 @@ function seekBy(s){
 function adjVol(d){
   const v = Math.min(1, Math.max(0, video.volume + d));
   video.volume = v; video.muted = false;
+  if(clips[cur]) clips[cur].vol = video.volume;
   volume.value = Math.round(v*100); syncVol(); savePrefs();
 }
 function syncVol(){
@@ -406,7 +478,7 @@ function updateTime(){
 }
 function updateInfo(){
   posLabel.textContent = (clips.length ? cur + 1 : 0) + '/' + clips.length;
-  nameLabel.textContent = clips[cur] ? clips[cur].name : '';
+  nameLabel.textContent = clips[cur] ? (clips[cur].label || clips[cur].name) : '';
 }
 function updateAB(){
   const d = video.duration || 0;
@@ -477,8 +549,9 @@ progress.addEventListener('pointerdown', ()=>{ seeking = true; });
 
 volume.addEventListener('input', ()=>{
   video.volume = volume.value / 100; video.muted = false; syncVol(); savePrefs();
+  if(clips[cur]) clips[cur].vol = video.volume;
 });
-speedSel.addEventListener('change', ()=>{ video.playbackRate = parseFloat(speedSel.value); savePrefs(); });
+speedSel.addEventListener('change', ()=>{ video.playbackRate = parseFloat(speedSel.value); if(clips[cur]) clips[cur].speed = video.playbackRate; savePrefs(); });
 
 stage.addEventListener('click', e=>{
   if(e.target === stage || e.target === video || e.target === image) togglePlay();
@@ -496,14 +569,9 @@ function toggleFull(){
   if(isFs(stage)) document.exitFullscreen().catch(()=>{});
   else stage.requestFullscreen().catch(()=>toast('浏览器不允许全屏'));
 }
-function toggleHalf(){
-  if(isFs(document.documentElement)) document.exitFullscreen().catch(()=>{});
-  else document.documentElement.requestFullscreen().catch(()=>toast('浏览器不允许全屏'));
-}
 document.addEventListener('fullscreenchange', ()=>{
   document.body.classList.toggle('full-f', isFs(stage));
-  document.body.classList.toggle('full-g', isFs(document.documentElement));
-  if(!isFs(stage) && !isFs(document.documentElement)) document.body.classList.remove('full-f','full-g');
+  if(!isFs(stage)) document.body.classList.remove('full-f');
   armCursorHide();
 });
 let cursorTimer = null;
@@ -533,7 +601,6 @@ window.addEventListener('keydown', e=>{
   switch(k){
     case ' ': togglePlay(); e.preventDefault(); break;
     case 'f': case 'F': toggleFull(); break;
-    case 'g': case 'G': toggleHalf(); break;
     case 'm': case 'M': video.muted = !video.muted; syncVol(); break;
     case 'ArrowUp': adjVol(0.05); e.preventDefault(); break;
     case 'ArrowDown': adjVol(-0.05); e.preventDefault(); break;
@@ -614,13 +681,20 @@ $('#btnClear').onclick = ()=>{ clearTimeout(imgTimer);
   image.style.display = 'none'; image.removeAttribute('src');
   progress.disabled = false;
   renderStrip(); updateInfo(); syncPlayIcon();
+  syncEditBar();
   $('#empty').style.display = 'flex';
 };
 btnPlay.onclick = togglePlay;
 centerPlay.onclick = togglePlay;
 $('#btnMute').onclick = ()=>{ video.muted = !video.muted; syncVol(); };
 $('#btnFull').onclick = toggleFull;
-$('#btnHalf').onclick = toggleHalf;
+$('#btnUp').onclick = ()=>moveClip(-1);
+$('#btnDown').onclick = ()=>moveClip(1);
+$('#btnDel').onclick = removeClip;
+editName.addEventListener('change', ()=>{ const c = clips[cur]; if(c){ const v = editName.value.trim(); c.label = v || null; renderStrip(); updateInfo(); } });
+editName.addEventListener('keydown', e=>{ if(e.key === 'Enter'){ e.preventDefault(); editName.blur(); } });
+editVol.addEventListener('input', ()=>{ const c = clips[cur]; if(!c) return; c.vol = editVol.value / 100; video.volume = c.vol; video.muted = false; volume.value = editVol.value; editVolVal.textContent = editVol.value + '%'; syncVol(); savePrefs(); });
+editSpeed.addEventListener('change', ()=>{ const c = clips[cur]; if(!c) return; c.speed = parseFloat(editSpeed.value); video.playbackRate = c.speed; speedSel.value = editSpeed.value; savePrefs(); });
 btnLoop.onclick = ()=>{ loop = !loop; syncToggles(); };
 btnChain.onclick = ()=>{ chain = !chain; syncToggles(); };
   btnAB.onclick = ()=>{ abOn = !abOn; syncToggles(); };
