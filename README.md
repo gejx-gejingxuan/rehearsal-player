@@ -1,10 +1,10 @@
-# 剧本排练播放器（网页版）
+# Rehearsal Player（剧本排练播放器 · 网页版）
 
-为剧本/英语剧排练制作的网页播放器：**单文件、无后端、纯 HTML5 原生播放**，白色主题与桌面版一致。
+为剧本/英语剧排练制作的网页播放器：**单文件、无后端、纯 HTML5 原生播放**，白色主题与桌面版一致。Rehearsal Player is a single-file, zero-backend rehearsal player.
 
 ## 使用
 
-1. 打开 [在线版](https://gejx-gejingxuan.github.io/yingyuju-player/) 或把 `index.html` 下载到本地双击打开
+1. 打开 [在线版](https://gejx-gejingxuan.github.io/rehearsal-player/) 或把 `index.html` 下载到本地双击打开
 2. 点「添加视频 / 图片」或把文件 / 文件夹拖进页面
 3. 底栏彩色数字卡片即片段列表，点击或按数字键切换
 4. 支持图片（jpg / png / gif / webp）：与视频混排，连播模式下每张自动停留 5 秒
