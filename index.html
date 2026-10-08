@@ -198,10 +198,11 @@ kbd{
       <option value="1.5">1.5×</option><option value="1.75">1.75×</option><option value="2">2×</option>
     </select>
     <span class="sep"></span>
-    <button class="ctl" id="btnAB" title="AB 区间循环">AB 截取</button>
-    <button class="ctl" id="btnSetA" title="A 点 = 当前时间 (A)">定 A</button>
-    <button class="ctl" id="btnSetB" title="B 点 = 当前时间 (B)">定 B</button>
-    <button class="ctl" id="btnClearAB" title="清除 AB (X)">清 AB</button>
+    <button class="ctl" id="btnAB" title="区间循环开关">AB 循环</button>
+    <button class="ctl" id="btnSetA" title="循环起点 = 当前时间 (A)">起点 A</button>
+    <button class="ctl" id="btnSetB" title="循环终点 = 当前时间 (B)">终点 B</button>
+    <button class="ctl" id="btnClearAB" title="清除起点终点 (X)">清除</button>
+    <span class="eb" id="abLabel"></span>
     <span class="sep"></span>
     <button class="ctl" id="btnFull" title="全屏 (F / 双击画面)">⛶ 全屏</button>
   </div>
@@ -257,6 +258,7 @@ const volume = $('#volume'), speedSel = $('#speed');
 const centerPlay = $('#centerPlay'), toastEl = $('#toast');
 const dotA = $('#dotA'), dotB = $('#dotB');
 const btnPlay = $('#btnPlay'), btnLoop = $('#btnLoop'), btnChain = $('#btnChain'), btnAB = $('#btnAB');
+const abLabel = $('#abLabel');
 
 const palette = ['#3e8edc','#e67e22','#2ecc71','#9b59b6','#e74c3c','#1abc9c','#f1c40f','#3498db','#e65178','#607d8b'];
 const videoExt = /\.(mp4|m4v|mov|webm|mkv|avi|ogv|flv|ts|wmv|3gp)$/i;
@@ -490,6 +492,10 @@ function updateAB(){
     dotB.style.display = 'block';
     dotB.style.left = (B / d * 100) + '%';
   } else dotB.style.display = 'none';
+  if(A != null && B != null){ abLabel.textContent = fmt(A) + ' → ' + fmt(B); }
+  else if(A != null){ abLabel.textContent = '起点 ' + fmt(A); }
+  else if(B != null){ abLabel.textContent = '终点 ' + fmt(B); }
+  else { abLabel.textContent = ''; }
 }
 function setA(){
   if(!clips.length) return;
