@@ -44,7 +44,6 @@ header .spacer{flex:1}
   justify-content:center; gap:14px; background:#000; color:#e8ebf0; text-align:center; padding:20px;
 }
 #empty .big{font-size:22px; font-weight:700}
-#empty .hint{font-size:13px; color:#9aa2b0; line-height:1.8}
 #empty .btns{display:flex; gap:10px}
 #centerPlay{
   position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
@@ -132,16 +131,14 @@ kbd{
   background:var(--strip); border:1px solid var(--border); border-bottom-width:2px;
   border-radius:5px; padding:1px 7px; font-family:inherit; font-size:12px; white-space:nowrap;
 }
-#helpBox .note{margin-top:10px; font-size:12px; color:var(--text-dim); line-height:1.7}
 #helpBox .close{float:right; border:0; background:none; font-size:20px; cursor:pointer; color:var(--text-dim)}
 </style>
 </head>
 <body>
 
 <header>
-  <div class="title">🎬 剧本排练播放器</div>
-  <div class="sub">网页版 · 本地播放，不联网上传</div>
-  <div class="spacer"></div>
+<div class="title">🎬 剧本排练播放器</div>
+<div class="spacer"></div>
   <button class="btn primary" id="btnFiles">添加视频</button>
   <button class="btn" id="btnFolder">添加文件夹</button>
   <button class="btn" id="btnLoop">循环</button>
@@ -158,11 +155,6 @@ kbd{
     <div class="btns">
       <button class="btn primary" id="btnFiles2">添加视频</button>
       <button class="btn" id="btnFolder2">添加文件夹</button>
-    </div>
-    <div class="hint">
-      也可直接把 mp4 文件或整个文件夹拖到页面上<br>
-      快捷键：1～9、0 切换片段 · 空格 播放/暂停 · F 全屏 · G 半全屏(保留底栏) · Esc 退出全屏<br>
-      注意：受浏览器安全限制，每次打开页面都需要重新选择视频文件
     </div>
   </div>
   <button id="centerPlay" title="播放 / 暂停">▶</button>
@@ -218,10 +210,6 @@ kbd{
       <tr><td><kbd>A</kbd> / <kbd>B</kbd> / <kbd>X</kbd></td><td>设 A 点 / 设 B 点 / 清除 AB</td></tr>
       <tr><td><kbd>L</kbd> / <kbd>N</kbd></td><td>循环开关 / 连播开关</td></tr>
     </table>
-    <div class="note">
-      底栏彩色数字卡片与桌面版一致：点击或按数字键即切换并自动播放。<br>
-      浏览器安全限制：关闭页面后视频列表不保留，下次打开需重新选择文件。
-    </div>
   </div>
 </div>
 
@@ -286,10 +274,9 @@ function addFiles(files){
   }
   renderStrip();
   measureDurations(clips.length - list.length, list.length);
-  $('#empty').style.display = 'none';
-  if(cur < 0) loadClip(0, true);
-  toast('已添加 ' + list.length + ' 个片段，共 ' + clips.length + ' 个');
-}
+    $('#empty').style.display = 'none';
+    if(cur < 0) loadClip(0, true);
+  }
 function measureDurations(start, count){
   for(let i = start; i < start + count; i++){
     (function(idx){
@@ -340,13 +327,11 @@ function loadClip(i, autoplay){
   if(cards[i]) cards[i].scrollIntoView({block:'nearest', inline:'nearest'});
   updateInfo();
 }
-function goTo(i){
-  if(i >= clips.length){ toast('没有第 ' + (i+1) + ' 个片段'); return; }
-  loadClip(i, true);
+  function goTo(i){
+    loadClip(i, true);
 }
-function togglePlay(){
-  if(!clips.length){ toast('请先添加视频文件'); return; }
-  if(video.paused) video.play().catch(()=>{});
+  function togglePlay(){
+    if(video.paused) video.play().catch(()=>{});
   else video.pause();
 }
 function seekBy(s){
@@ -389,19 +374,17 @@ function updateAB(){
 }
 function setA(){
   if(!clips.length) return;
-  A = video.currentTime;
-  if(B != null && A >= B) B = null;
-  toast('A 点：' + fmt(A));
-  updateAB();
+    A = video.currentTime;
+    if(B != null && A >= B) B = null;
+    updateAB();
 }
 function setB(){
   if(!clips.length) return;
-  B = video.currentTime;
-  if(A != null && B <= A) A = null;
-  toast('B 点：' + fmt(B));
-  updateAB();
+    B = video.currentTime;
+    if(A != null && B <= A) A = null;
+    updateAB();
 }
-function clearAB(){ A = B = null; updateAB(); toast('AB 区间已清除'); }
+  function clearAB(){ A = B = null; updateAB(); }
 function syncToggles(){
   btnLoop.classList.toggle('on', loop);
   btnChain.classList.toggle('on', chain);
@@ -572,7 +555,7 @@ $('#btnFull').onclick = toggleFull;
 $('#btnHalf').onclick = toggleHalf;
 btnLoop.onclick = ()=>{ loop = !loop; syncToggles(); };
 btnChain.onclick = ()=>{ chain = !chain; syncToggles(); };
-btnAB.onclick = ()=>{ abOn = !abOn; syncToggles(); if(abOn && (A == null || B == null)) toast('先按 A / B 设定区间（当前时间）'); };
+  btnAB.onclick = ()=>{ abOn = !abOn; syncToggles(); };
 $('#btnSetA').onclick = setA;
 $('#btnSetB').onclick = setB;
 $('#btnClearAB').onclick = clearAB;
