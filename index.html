@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>剧本排练播放器（网页版）</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎬</text></svg>">
+<style>
+:root{
+  --panel:#f3f6fa; --strip:#e7ebf1; --control:#ffffff; --control-hover:#e2ebf6;
+  --accent:#3e8edc; --text:#2a303a; --text-dim:#767e8c; --border:#c2c8d4;
+  --card-border:#c6ccd8; --card-hover:#eef4fc; --active-bg:#2f343c;
+}
+*{box-sizing:border-box; margin:0; padding:0}
+html,body{height:100%}
+body{
+  display:flex; flex-direction:column; height:100%;
+  font-family:"Segoe UI","Microsoft YaHei",system-ui,sans-serif;
+  background:var(--panel); color:var(--text); overflow:hidden;
+  -webkit-user-select:none; user-select:none;
+}
+/* ---------- 顶栏 ---------- */
+header{
+  display:flex; align-items:center; gap:10px; padding:10px 16px;
+  background:var(--control); border-bottom:1px solid var(--border); flex:none;
+}
+header .title{font-size:16px; font-weight:700; white-space:nowrap}
+header .sub{font-size:12px; color:var(--text-dim); white-space:nowrap}
+header .spacer{flex:1}
+.btn{
+  border:1px solid var(--border); background:var(--control); color:var(--text);
+  padding:6px 12px; border-radius:8px; cursor:pointer; font-size:13px; white-space:nowrap;
+  font-family:inherit; transition:background .12s;
+}
+.btn:hover{background:var(--control-hover)}
+.btn.primary{background:var(--accent); border-color:var(--accent); color:#fff}
+.btn.primary:hover{background:#337cc2}
+.btn.on{background:#dcebfa; border-color:var(--accent); color:#1f5f9e; font-weight:600}
+/* ---------- 视频区 ---------- */
+#stage{position:relative; flex:1; min-height:0; background:#000}
+#video{position:absolute; inset:0; width:100%; height:100%; object-fit:contain; background:#000; cursor:pointer}
+#empty{
+  position:absolute; inset:0; display:flex; flex-direction:column; align-items:center;
+  justify-content:center; gap:14px; background:#000; color:#e8ebf0; text-align:center; padding:20px;
+}
+#empty .big{font-size:22px; font-weight:700}
+#empty .hint{font-size:13px; color:#9aa2b0; line-height:1.8}
+#empty .btns{display:flex; gap:10px}
+#centerPlay{
+  position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+  width:84px; height:84px; border-radius:50%; border:0; cursor:pointer;
+  background:rgba(20,24,30,.55); color:#fff; font-size:34px; line-height:1;
+  display:none; align-items:center; justify-content:center; padding-left:8px;
+  backdrop-filter:blur(2px);
+}
+#centerPlay:hover{background:rgba(62,142,220,.85)}
+#centerPlay.show{display:flex}
+body.full-f{cursor:none}
+body.full-f #centerPlay,body.full-f #stage{cursor:none}
+/* ---------- 底栏 ---------- */
+#dock{flex:none; background:var(--strip); border-top:1px solid var(--border); display:flex; flex-direction:column}
+#ctlbar{
+  display:flex; align-items:center; flex-wrap:wrap; gap:8px;
+  padding:8px 12px; background:var(--control); border-bottom:1px solid var(--border);
+}
+#ctlbar .sep{width:1px; height:22px; background:var(--border); margin:0 2px}
+.ctl{
+  border:1px solid var(--border); background:var(--control); color:var(--text);
+  padding:5px 10px; border-radius:7px; cursor:pointer; font-size:13px; font-family:inherit; white-space:nowrap;
+}
+.ctl:hover{background:var(--control-hover)}
+.ctl.on{background:#dcebfa; border-color:var(--accent); color:#1f5f9e; font-weight:600}
+#progressWrap{flex:1; min-width:160px; position:relative; height:26px; display:flex; align-items:center}
+#progress{-webkit-appearance:none; appearance:none; width:100%; height:6px; border-radius:3px;
+  background:#d7dce5; outline:none; cursor:pointer}
+#progress::-webkit-slider-thumb{-webkit-appearance:none; width:14px; height:14px; border-radius:50%;
+  background:var(--accent); border:2px solid #fff; box-shadow:0 0 0 1px var(--border); cursor:pointer}
+.abdot{position:absolute; top:2px; width:4px; height:22px; border-radius:2px; pointer-events:none; transform:translateX(-2px)}
+#dotA{background:#3e8edc}
+#dotB{background:#e67e22}
+#timeLabel{font-size:12.5px; color:var(--text-dim); white-space:nowrap; font-variant-numeric:tabular-nums}
+#nameLabel{font-size:13px; max-width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+#posLabel{font-size:12.5px; color:var(--text-dim); white-space:nowrap}
+#volWrap{display:flex; align-items:center; gap:6px}
+#volume{width:80px; accent-color:var(--accent)}
+select.ctl{padding:5px 6px}
+/* ---------- 卡片条 ---------- */
+#strip{
+  display:flex; gap:10px; padding:10px 12px; overflow-x:auto; overflow-y:hidden;
+  min-height:106px; background:var(--strip);
+}
+.card{
+  flex:0 0 150px; display:flex; flex-direction:column; align-items:flex-start; gap:6px;
+  padding:10px 12px; border-radius:10px; cursor:pointer; text-align:left;
+  background:var(--control); border:1.5px solid var(--card-border);
+  font-family:inherit; transition:background .12s, transform .12s;
+}
+.card:hover{background:var(--card-hover); transform:translateY(-1px)}
+.card.active{background:var(--active-bg); border-color:var(--c,#3e8edc)}
+.badge{
+  width:26px; height:26px; border-radius:50%; flex:none;
+  display:flex; align-items:center; justify-content:center;
+  color:#fff; font-weight:700; font-size:13px; background:var(--c,#3e8edc);
+}
+.card .name{font-size:12.5px; color:#404650; width:100%; overflow:hidden; text-overflow:ellipsis;
+  white-space:nowrap; font-weight:600}
+.card .dur{font-size:11.5px; color:#7c8492; font-variant-numeric:tabular-nums}
+.card.active .name{color:#fff}
+.card.active .dur{color:#b8c0cc}
+/* ---------- 提示与帮助 ---------- */
+#toast{
+  position:fixed; left:50%; bottom:140px; transform:translateX(-50%) translateY(20px);
+  background:rgba(42,48,58,.92); color:#fff; padding:9px 16px; border-radius:8px;
+  font-size:13px; opacity:0; pointer-events:none; transition:opacity .2s, transform .2s; z-index:60;
+  max-width:80vw;
+}
+#toast.show{opacity:1; transform:translateX(-50%) translateY(0)}
+#help{
+  position:fixed; inset:0; background:rgba(15,18,22,.55); display:none;
+  align-items:center; justify-content:center; z-index:70;
+}
+#help.show{display:flex}
+#helpBox{
+  background:var(--control); border:1px solid var(--border); border-radius:12px;
+  padding:22px 26px; max-width:480px; width:92vw; max-height:80vh; overflow:auto;
+}
+#helpBox h2{font-size:17px; margin-bottom:12px}
+#helpBox table{width:100%; border-collapse:collapse; font-size:13px}
+#helpBox td{padding:5px 6px; border-bottom:1px solid var(--strip); vertical-align:top}
+#helpBox td:first-child{white-space:nowrap; padding-right:14px}
+kbd{
+  background:var(--strip); border:1px solid var(--border); border-bottom-width:2px;
+  border-radius:5px; padding:1px 7px; font-family:inherit; font-size:12px; white-space:nowrap;
+}
+#helpBox .note{margin-top:10px; font-size:12px; color:var(--text-dim); line-height:1.7}
+#helpBox .close{float:right; border:0; background:none; font-size:20px; cursor:pointer; color:var(--text-dim)}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="title">🎬 剧本排练播放器</div>
+  <div class="sub">网页版 · 本地播放，不联网上传</div>
+  <div class="spacer"></div>
+  <button class="btn primary" id="btnFiles">添加视频</button>
+  <button class="btn" id="btnFolder">添加文件夹</button>
+  <button class="btn" id="btnLoop">循环</button>
+  <button class="btn" id="btnChain">连播</button>
+  <button class="btn" id="btnHelp">❓ 快捷键</button>
+  <input type="file" id="fileInput" multiple accept="video/*,.mp4,.m4v,.mov,.webm,.mkv,.avi,.ogv,.flv,.ts,.wmv" hidden>
+  <input type="file" id="dirInput" webkitdirectory multiple hidden>
+</header>
+
+<div id="stage">
+  <video id="video" preload="auto" playsinline></video>
+  <div id="empty">
+    <div class="big">把视频拖进来，开始排练</div>
+    <div class="btns">
+      <button class="btn primary" id="btnFiles2">添加视频</button>
+      <button class="btn" id="btnFolder2">添加文件夹</button>
+    </div>
+    <div class="hint">
+      也可直接把 mp4 文件或整个文件夹拖到页面上<br>
+      快捷键：1～9、0 切换片段 · 空格 播放/暂停 · F 全屏 · G 半全屏(保留底栏) · Esc 退出全屏<br>
+      注意：受浏览器安全限制，每次打开页面都需要重新选择视频文件
+    </div>
+  </div>
+  <button id="centerPlay" title="播放 / 暂停">▶</button>
+</div>
+
+<div id="dock">
+  <div id="ctlbar">
+    <button class="ctl" id="btnPlay" title="空格">▶</button>
+    <div id="progressWrap">
+      <div class="abdot" id="dotA" style="display:none"></div>
+      <div class="abdot" id="dotB" style="display:none"></div>
+      <input type="range" id="progress" min="0" max="1000" value="0" step="0.1">
+    </div>
+    <span id="timeLabel">00:00 / 00:00</span>
+    <span class="sep"></span>
+    <span id="posLabel">0/0</span>
+    <span id="nameLabel"></span>
+    <span class="sep"></span>
+    <button class="ctl" id="btnMute" title="静音 (M)">🔊</button>
+    <div id="volWrap"><input type="range" id="volume" min="0" max="100" value="80" title="音量 ↑/↓ 或滚轮"></div>
+    <select class="ctl" id="speed" title="播放速度">
+      <option value="0.5">0.5×</option><option value="0.75">0.75×</option>
+      <option value="1" selected>1×</option><option value="1.25">1.25×</option>
+      <option value="1.5">1.5×</option><option value="1.75">1.75×</option><option value="2">2×</option>
+    </select>
+    <span class="sep"></span>
+    <button class="ctl" id="btnAB" title="AB 区间循环">AB 截取</button>
+    <button class="ctl" id="btnSetA" title="A 点 = 当前时间 (A)">定 A</button>
+    <button class="ctl" id="btnSetB" title="B 点 = 当前时间 (B)">定 B</button>
+    <button class="ctl" id="btnClearAB" title="清除 AB (X)">清 AB</button>
+    <span class="sep"></span>
+    <button class="ctl" id="btnFull" title="全屏，无底栏 (F / 双击画面)">⛶ 全屏</button>
+    <button class="ctl" id="btnHalf" title="半全屏，保留底栏 (G)">▣ 半全屏</button>
+  </div>
+  <div id="strip"></div>
+</div>
+
+<div id="toast"></div>
+
+<div id="help">
+  <div id="helpBox">
+    <button class="close" id="btnHelpClose">✕</button>
+    <h2>快捷键</h2>
+    <table>
+      <tr><td><kbd>1</kbd>～<kbd>9</kbd> / <kbd>0</kbd></td><td>切换到第 1～9 / 第 10 个片段</td></tr>
+      <tr><td><kbd>空格</kbd></td><td>播放 / 暂停（单击画面同样有效）</td></tr>
+      <tr><td><kbd>F</kbd> / 双击画面</td><td>全屏播放（隐藏底栏）</td></tr>
+      <tr><td><kbd>G</kbd></td><td>半全屏（保留底栏卡片）</td></tr>
+      <tr><td><kbd>Esc</kbd></td><td>退出全屏</td></tr>
+      <tr><td><kbd>←</kbd> / <kbd>→</kbd></td><td>快退 / 快进 5 秒</td></tr>
+      <tr><td><kbd>↑</kbd> / <kbd>↓</kbd> 或 滚轮</td><td>音量增大 / 减小</td></tr>
+      <tr><td><kbd>M</kbd></td><td>静音 / 取消静音</td></tr>
+      <tr><td><kbd>A</kbd> / <kbd>B</kbd> / <kbd>X</kbd></td><td>设 A 点 / 设 B 点 / 清除 AB</td></tr>
+      <tr><td><kbd>L</kbd> / <kbd>N</kbd></td><td>循环开关 / 连播开关</td></tr>
+    </table>
+    <div class="note">
+      底栏彩色数字卡片与桌面版一致：点击或按数字键即切换并自动播放。<br>
+      浏览器安全限制：关闭页面后视频列表不保留，下次打开需重新选择文件。
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+const video = $('#video'), stage = $('#stage'), strip = $('#strip');
+const progress = $('#progress'), timeLabel = $('#timeLabel');
+const nameLabel = $('#nameLabel'), posLabel = $('#posLabel');
+const volume = $('#volume'), speedSel = $('#speed');
+const centerPlay = $('#centerPlay'), toastEl = $('#toast');
+const dotA = $('#dotA'), dotB = $('#dotB');
+const btnPlay = $('#btnPlay'), btnLoop = $('#btnLoop'), btnChain = $('#btnChain'), btnAB = $('#btnAB');
+
+const palette = ['#3e8edc','#e67e22','#2ecc71','#9b59b6','#e74c3c','#1abc9c','#f1c40f','#3498db','#e65178','#607d8b'];
+const videoExt = /\.(mp4|m4v|mov|webm|mkv|avi|ogv|flv|ts|wmv|3gp)$/i;
+
+let clips = [];            // {name, url, duration}
+let cur = -1;
+let seeking = false;
+let chain = false, loop = false, abOn = false, A = null, B = null;
+let toastTimer = null;
+
+/* ---------- 工具 ---------- */
+function fmt(t){
+  if(!isFinite(t) || t < 0) return '--:--';
+  t = Math.floor(t);
+  const m = Math.floor(t/60), s = t % 60;
+  return String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+}
+function toast(msg){
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>toastEl.classList.remove('show'), 2600);
+}
+function savePrefs(){
+  try{ localStorage.setItem('rp_prefs', JSON.stringify({
+    speed: speedSel.value, chain, loop, abOn, vol: volume.value
+  })); }catch(e){}
+}
+function loadPrefs(){
+  try{
+    const p = JSON.parse(localStorage.getItem('rp_prefs') || '{}');
+    if(p.speed) speedSel.value = p.speed;
+    chain = !!p.chain; loop = !!p.loop; abOn = !!p.abOn;
+    volume.value = (p.vol == null) ? 80 : p.vol;
+  }catch(e){}
+}
+loadPrefs();
+video.volume = volume.value / 100;
+video.playbackRate = parseFloat(speedSel.value);
+
+/* ---------- 文件导入 ---------- */
+function addFiles(files){
+  const list = [...files].filter(f => f && videoExt.test(f.name))
+    .sort((a,b)=>a.name.localeCompare(b.name,'zh',{numeric:true}));
+  if(!list.length){ toast('未找到可播放的视频文件'); return; }
+  for(const f of list){
+    const url = URL.createObjectURL(f);
+    clips.push({ name:f.name, url, duration:NaN });
+  }
+  renderStrip();
+  measureDurations(clips.length - list.length, list.length);
+  $('#empty').style.display = 'none';
+  if(cur < 0) loadClip(0, true);
+  toast('已添加 ' + list.length + ' 个片段，共 ' + clips.length + ' 个');
+}
+function measureDurations(start, count){
+  for(let i = start; i < start + count; i++){
+    (function(idx){
+      const el = document.createElement('video');
+      el.preload = 'metadata'; el.muted = true;
+      el.onloadedmetadata = function(){
+        clips[idx].duration = el.duration;
+        renderStrip();
+        el.removeAttribute('src'); el.load();
+      };
+      el.onerror = function(){ el.removeAttribute('src'); };
+      el.src = clips[idx].url;
+    })(i);
+  }
+}
+
+/* ---------- 卡片底栏 ---------- */
+function renderStrip(){
+  strip.innerHTML = '';
+  clips.forEach((c,i)=>{
+    const d = document.createElement('button');
+    const col = palette[i % palette.length];
+    const key = i < 9 ? String(i+1) : (i === 9 ? '0' : '');
+    d.className = 'card' + (i === cur ? ' active' : '');
+    d.style.setProperty('--c', col);
+    d.title = c.name + (key ? '（快捷键 ' + key + '）' : '');
+    const b = document.createElement('span'); b.className='badge'; b.textContent = String(i+1);
+    const n = document.createElement('span'); n.className='name'; n.textContent = c.name;
+    const t = document.createElement('span'); t.className='dur';
+    t.textContent = isFinite(c.duration) ? fmt(c.duration) : '--:--';
+    d.appendChild(b); d.appendChild(n); d.appendChild(t);
+    d.onclick = ()=>loadClip(i, true);
+    strip.appendChild(d);
+  });
+}
+
+/* ---------- 播放控制 ---------- */
+function loadClip(i, autoplay){
+  if(i < 0 || i >= clips.length) return;
+  cur = i;
+  if(video.getAttribute('src') !== clips[i].url){
+    video.src = clips[i].url;
+  }
+  video.playbackRate = parseFloat(speedSel.value);
+  if(autoplay) video.play().catch(()=>{});
+  renderStrip();
+  const cards = strip.children;
+  if(cards[i]) cards[i].scrollIntoView({block:'nearest', inline:'nearest'});
+  updateInfo();
+}
+function goTo(i){
+  if(i >= clips.length){ toast('没有第 ' + (i+1) + ' 个片段'); return; }
+  loadClip(i, true);
+}
+function togglePlay(){
+  if(!clips.length){ toast('请先添加视频文件'); return; }
+  if(video.paused) video.play().catch(()=>{});
+  else video.pause();
+}
+function seekBy(s){
+  if(!clips.length) return;
+  const t = Math.min(Math.max(0, video.currentTime + s), video.duration || 0);
+  video.currentTime = t;
+}
+function adjVol(d){
+  const v = Math.min(1, Math.max(0, video.volume + d));
+  video.volume = v; video.muted = false;
+  volume.value = Math.round(v*100); syncVol(); savePrefs();
+}
+function syncVol(){
+  btnMute.textContent = video.muted ? '🔇' : '🔊';
+}
+function syncPlayIcon(){
+  btnPlay.textContent = video.paused ? '▶' : '⏸';
+  centerPlay.classList.toggle('show', video.paused && clips.length > 0);
+  centerPlay.textContent = video.paused ? '▶' : '⏸';
+}
+function updateTime(){
+  const t = video.currentTime || 0, d = video.duration || 0;
+  timeLabel.textContent = fmt(t) + ' / ' + fmt(d);
+  if(!seeking && d > 0) progress.value = t / d * 1000;
+}
+function updateInfo(){
+  posLabel.textContent = (clips.length ? cur + 1 : 0) + '/' + clips.length;
+  nameLabel.textContent = clips[cur] ? clips[cur].name : '';
+}
+function updateAB(){
+  const d = video.duration || 0;
+  if(A != null && d > 0){
+    dotA.style.display = 'block';
+    dotA.style.left = (A / d * 100) + '%';
+  } else dotA.style.display = 'none';
+  if(B != null && d > 0){
+    dotB.style.display = 'block';
+    dotB.style.left = (B / d * 100) + '%';
+  } else dotB.style.display = 'none';
+}
+function setA(){
+  if(!clips.length) return;
+  A = video.currentTime;
+  if(B != null && A >= B) B = null;
+  toast('A 点：' + fmt(A));
+  updateAB();
+}
+function setB(){
+  if(!clips.length) return;
+  B = video.currentTime;
+  if(A != null && B <= A) A = null;
+  toast('B 点：' + fmt(B));
+  updateAB();
+}
+function clearAB(){ A = B = null; updateAB(); toast('AB 区间已清除'); }
+function syncToggles(){
+  btnLoop.classList.toggle('on', loop);
+  btnChain.classList.toggle('on', chain);
+  btnAB.classList.toggle('on', abOn);
+  savePrefs();
+}
+
+/* ---------- 事件 ---------- */
+video.addEventListener('play', syncPlayIcon);
+video.addEventListener('pause', syncPlayIcon);
+video.addEventListener('loadedmetadata', ()=>{ updateTime(); updateAB(); });
+video.addEventListener('durationchange', ()=>{
+  if(cur >= 0 && isFinite(video.duration)){
+    clips[cur].duration = video.duration;
+    renderStrip();
+  }
+});
+video.addEventListener('timeupdate', ()=>{
+  updateTime(); updateAB();
+  if(abOn && A != null && B != null && B > A && video.currentTime >= B - 0.05){
+    video.currentTime = A;
+  }
+});
+video.addEventListener('ended', ()=>{
+  if(abOn && A != null && B != null && B > A){ video.currentTime = A; video.play().catch(()=>{}); return; }
+  if(loop){ video.currentTime = 0; video.play().catch(()=>{}); return; }
+  if(chain && clips.length > 1){ loadClip((cur + 1) % clips.length, true); return; }
+  syncPlayIcon();
+});
+video.addEventListener('error', ()=>{
+  if(cur >= 0 && clips[cur]) toast('无法播放：' + clips[cur].name + '（浏览器不支持该编码）');
+});
+
+progress.addEventListener('input', ()=>{
+  seeking = true;
+  if(video.duration) video.currentTime = progress.value / 1000 * video.duration;
+  updateTime();
+});
+progress.addEventListener('change', ()=>{ seeking = false; });
+progress.addEventListener('pointerdown', ()=>{ seeking = true; });
+
+volume.addEventListener('input', ()=>{
+  video.volume = volume.value / 100; video.muted = false; syncVol(); savePrefs();
+});
+speedSel.addEventListener('change', ()=>{ video.playbackRate = parseFloat(speedSel.value); savePrefs(); });
+
+stage.addEventListener('click', e=>{
+  if(e.target === stage || e.target === video) togglePlay();
+});
+stage.addEventListener('dblclick', e=>{
+  if(e.target === stage || e.target === video){ e.preventDefault(); toggleFull(); }
+});
+stage.addEventListener('wheel', e=>{
+  if(clips.length){ e.preventDefault(); adjVol(e.deltaY < 0 ? 0.05 : -0.05); }
+}, {passive:false});
+
+/* ---------- 全屏 ---------- */
+function isFs(el){ return document.fullscreenElement === el; }
+function toggleFull(){
+  if(isFs(stage)) document.exitFullscreen().catch(()=>{});
+  else stage.requestFullscreen().catch(()=>toast('浏览器不允许全屏'));
+}
+function toggleHalf(){
+  if(isFs(document.documentElement)) document.exitFullscreen().catch(()=>{});
+  else document.documentElement.requestFullscreen().catch(()=>toast('浏览器不允许全屏'));
+}
+document.addEventListener('fullscreenchange', ()=>{
+  document.body.classList.toggle('full-f', isFs(stage));
+  document.body.classList.toggle('full-g', isFs(document.documentElement));
+  if(!isFs(stage) && !isFs(document.documentElement)) document.body.classList.remove('full-f','full-g');
+  armCursorHide();
+});
+let cursorTimer = null;
+function armCursorHide(){
+  clearTimeout(cursorTimer);
+  const active = document.fullscreenElement;
+  if(active){
+    document.body.classList.remove('hide-cursor');
+    cursorTimer = setTimeout(()=>{ if(document.fullscreenElement) document.body.classList.add('hide-cursor'); }, 2600);
+  } else {
+    document.body.classList.remove('hide-cursor');
+  }
+}
+document.addEventListener('mousemove', armCursorHide);
+
+/* ---------- 键盘 ---------- */
+window.addEventListener('keydown', e=>{
+  const tag = e.target && e.target.tagName;
+  if(tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+  if($('#help').classList.contains('show')){
+    if(e.key === 'Escape') $('#help').classList.remove('show');
+    return;
+  }
+  const k = e.key;
+  if(/^[1-9]$/.test(k)){ goTo(parseInt(k,10)-1); e.preventDefault(); return; }
+  if(k === '0'){ goTo(9); e.preventDefault(); return; }
+  switch(k){
+    case ' ': togglePlay(); e.preventDefault(); break;
+    case 'f': case 'F': toggleFull(); break;
+    case 'g': case 'G': toggleHalf(); break;
+    case 'm': case 'M': video.muted = !video.muted; syncVol(); break;
+    case 'ArrowUp': adjVol(0.05); e.preventDefault(); break;
+    case 'ArrowDown': adjVol(-0.05); e.preventDefault(); break;
+    case 'ArrowLeft': seekBy(-5); e.preventDefault(); break;
+    case 'ArrowRight': seekBy(5); e.preventDefault(); break;
+    case 'a': case 'A': setA(); break;
+    case 'b': case 'B': setB(); break;
+    case 'x': case 'X': clearAB(); break;
+    case 'l': case 'L': loop = !loop; syncToggles(); break;
+    case 'n': case 'N': chain = !chain; syncToggles(); break;
+  }
+});
+
+/* ---------- 拖拽导入 ---------- */
+window.addEventListener('dragover', e=>{ e.preventDefault(); });
+window.addEventListener('drop', e=>{
+  e.preventDefault();
+  const items = e.dataTransfer && e.dataTransfer.items;
+  if(items && items.length){
+    const entries = [];
+    for(const it of items){
+      if(it.kind !== 'file') continue;
+      const entry = it.webkitGetAsEntry ? it.webkitGetAsEntry() : null;
+      if(entry) entries.push(entry);
+    }
+    if(entries.length){
+      readEntries(entries, files=>addFiles(files));
+      return;
+    }
+  }
+  addFiles(e.dataTransfer.files);
+});
+function readEntries(entries, done){
+  const out = [];
+  let pending = entries.length;
+  if(!pending){ done(out); return; }
+  entries.forEach(entry=>walk(entry, ()=>{ if(--pending === 0) done(out); }));
+  function walk(entry, cb){
+    if(entry.isFile){
+      entry.file(f=>{ out.push(f); cb(); }, cb);
+    } else if(entry.isDirectory){
+      const reader = entry.createReader();
+      const readBatch = ()=>{
+        reader.readEntries(list=>{
+          if(!list.length){ cb(); return; }
+          let left = list.length;
+          list.forEach(e=>walk(e, ()=>{ if(--left === 0) readBatch(); }));
+        }, cb);
+      };
+      readBatch();
+    } else cb();
+  }
+}
+
+/* ---------- 按钮 ---------- */
+function pickFiles(){ $('#fileInput').click(); }
+function pickFolder(){ $('#dirInput').click(); }
+$('#fileInput').addEventListener('change', e=>{ addFiles(e.target.files); e.target.value=''; });
+$('#dirInput').addEventListener('change', e=>{ addFiles(e.target.files); e.target.value=''; });
+$('#btnFiles').onclick = pickFiles;
+$('#btnFiles2').onclick = pickFiles;
+$('#btnFolder').onclick = pickFolder;
+$('#btnFolder2').onclick = pickFolder;
+btnPlay.onclick = togglePlay;
+centerPlay.onclick = togglePlay;
+$('#btnMute').onclick = ()=>{ video.muted = !video.muted; syncVol(); };
+$('#btnFull').onclick = toggleFull;
+$('#btnHalf').onclick = toggleHalf;
+btnLoop.onclick = ()=>{ loop = !loop; syncToggles(); };
+btnChain.onclick = ()=>{ chain = !chain; syncToggles(); };
+btnAB.onclick = ()=>{ abOn = !abOn; syncToggles(); if(abOn && (A == null || B == null)) toast('先按 A / B 设定区间（当前时间）'); };
+$('#btnSetA').onclick = setA;
+$('#btnSetB').onclick = setB;
+$('#btnClearAB').onclick = clearAB;
+$('#btnHelp').onclick = ()=>$('#help').classList.add('show');
+$('#btnHelpClose').onclick = ()=>$('#help').classList.remove('show');
+$('#help').addEventListener('click', e=>{ if(e.target === $('#help')) $('#help').classList.remove('show'); });
+
+/* ---------- 初始化 ---------- */
+syncVol(); syncPlayIcon(); syncToggles();
+window.addEventListener('beforeunload', ()=>{
+  clips.forEach(c=>{ try{ URL.revokeObjectURL(c.url); }catch(e){} });
+});
+</script>
+</body>
+</html>
