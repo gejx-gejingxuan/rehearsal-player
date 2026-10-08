@@ -155,6 +155,9 @@ kbd{
   <button class="btn primary" id="btnFiles">添加视频 / 图片</button>
   <button class="btn" id="btnFolder">添加文件夹</button>
   <button class="btn" id="btnClear">清空</button>
+  <button class="btn" id="btnSave" title="打包所有片段与设置，下载 zip">保存 ZIP</button>
+  <button class="btn" id="btnImport" title="从 zip 恢复片段与设置（替换当前列表）">导入 ZIP</button>
+  <input type="file" id="zipInput" accept=".zip,application/zip" hidden>
   <button class="btn" id="btnLoop">循环</button>
   <button class="btn" id="btnChain">连播</button>
   <button class="btn" id="btnHelp">❓ 快捷键</button>
@@ -310,7 +313,7 @@ function addFiles(files){
   for(const f of list){
     const url = URL.createObjectURL(f);
     const type = videoExt.test(f.name) ? 'video' : 'image';
-    clips.push({ name:f.name, url, duration:NaN, type, label:null, vol:video.volume, speed:parseFloat(speedSel.value) });
+    clips.push({ name:f.name, url, duration:NaN, type, label:null, vol:video.volume, speed:parseFloat(speedSel.value), file:f });
   }
   renderStrip();
   measureDurations(clips.length - list.length, list.length);
@@ -670,6 +673,135 @@ function readEntries(entries, done){
 }
 
 /* ---------- 按钮 ---------- */
+/* ---------- 保存 / 导入 ZIP ---------- */
+const crcTable = (()=>{ const t=new Uint32Array(256); for(let i=0;i<256;i++){ let c=i; for(let k=0;k<8;k++) c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1); t[i]=c; } return t; })();
+function crc32(u8){ let c=0xFFFFFFFF; for(let i=0;i<u8.length;i++) c=crcTable[(c^u8[i])&0xFF]^(c>>>8); return (c^0xFFFFFFFF)>>>0; }
+const zte = new TextEncoder();
+function z16(v){ const b=new Uint8Array(2); new DataView(b.buffer).setUint16(0,v,true); return b; }
+function z32(v){ const b=new Uint8Array(4); new DataView(b.buffer).setUint32(0,v,true); return b; }
+function dosNow(){ const d=new Date(); return {time:(d.getHours()<<11)|(d.getMinutes()<<5)|(d.getSeconds()>>1), date:((d.getFullYear()-1980)<<9)|((d.getMonth()+1)<<5)|d.getDate()}; }
+function zcat(arrs){ let t=0; for(const a of arrs) t+=a.length; const o=new Uint8Array(t); let p=0; for(const a of arrs){ o.set(a,p); p+=a.length; } return o; }
+async function buildZip(entries){
+  const parts=[], central=[];
+  let offset=0;
+  const {time,date}=dosNow();
+  for(let i=0;i<entries.length;i++){
+    const e=entries[i];
+    const nb=zte.encode(e.path);
+    const crc=crc32(e.data);
+    const local=zcat([z32(0x04034b50),z16(20),z16(0x0800),z16(0),z16(time),z16(date),z32(crc),z32(e.data.length),z32(e.data.length),z16(nb.length),z16(0)]);
+    parts.push(local,nb,e.data);
+    central.push(zcat([z32(0x02014b50),z16(20),z16(20),z16(0x0800),z16(0),z16(time),z16(date),z32(crc),z32(e.data.length),z32(e.data.length),z16(nb.length),z16(0),z16(0),z16(0),z16(0),z32(0),z32(offset)]),nb);
+    offset+=local.length+nb.length+e.data.length;
+  }
+  let cs=0; for(const a of central) cs+=a.length;
+  const end=zcat([z32(0x06054b50),z16(0),z16(0),z16(entries.length),z16(entries.length),z32(cs),z32(offset),z16(0)]);
+  return new Blob([zcat([...parts,...central,end])],{type:'application/zip'});
+}
+function guessType(n){
+  const e=(n.split('.').pop()||'').toLowerCase();
+  if(['mp4','m4v','mov'].includes(e)) return 'video/mp4';
+  if(e==='webm') return 'video/webm';
+  if(e==='mkv') return 'video/x-matroska';
+  if(['jpg','jpeg'].includes(e)) return 'image/jpeg';
+  if(e==='png') return 'image/png';
+  if(e==='gif') return 'image/gif';
+  if(e==='webp') return 'image/webp';
+  return 'application/octet-stream';
+}
+async function exportZip(){
+  if(!clips.length) return;
+  const cfg={version:1,prefs:{speed:speedSel.value,chain,loop,abOn,vol:volume.value},clips:[]};
+  const entries=[];
+  for(let i=0;i<clips.length;i++){
+    const c=clips[i];
+    const path='videos/'+String(i).padStart(3,'0')+'_'+c.name;
+    toast('打包中 ' + (i+1) + '/' + clips.length);
+    entries.push({path, data:new Uint8Array(await c.file.arrayBuffer())});
+    cfg.clips.push({file:c.name,path,type:c.type,label:c.label||null,vol:(c.vol!=null?c.vol:video.volume),speed:(c.speed||1),duration:isFinite(c.duration)?c.duration:null});
+  }
+  entries.push({path:'config.json', data:zte.encode(JSON.stringify(cfg,null,2))});
+  const blob=await buildZip(entries);
+  const a=document.createElement('a');
+  const stamp=new Date().toISOString().slice(0,16).replace(/[:T]/g,'-');
+  a.href=URL.createObjectURL(blob);
+  a.download='排练包-'+stamp+'.zip';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),10000);
+}
+async function readZipFile(file){
+  const buf=new Uint8Array(await file.arrayBuffer());
+  const dv=new DataView(buf.buffer);
+  let eocd=-1;
+  for(let i=buf.length-22;i>=Math.max(0,buf.length-22-65536);i--){
+    if(dv.getUint32(i,true)===0x06054b50){ eocd=i; break; }
+  }
+  if(eocd<0) throw new Error('不是有效的 ZIP 文件');
+  const count=dv.getUint16(eocd+10,true);
+  let p=dv.getUint32(eocd+16,true);
+  const out=new Map();
+  for(let i=0;i<count;i++){
+    if(dv.getUint32(p,true)!==0x02014b50) throw new Error('ZIP 目录解析失败');
+    const method=dv.getUint16(p+10,true);
+    const csize=dv.getUint32(p+20,true);
+    const nameLen=dv.getUint16(p+28,true), extraLen=dv.getUint16(p+30,true), commentLen=dv.getUint16(p+32,true);
+    const localOff=dv.getUint32(p+42,true);
+    const name=new TextDecoder().decode(buf.subarray(p+46,p+46+nameLen));
+    const lp=localOff;
+    if(dv.getUint32(lp,true)!==0x04034b50) throw new Error('ZIP 局部头解析失败');
+    const ln=dv.getUint16(lp+26,true), le=dv.getUint16(lp+28,true);
+    let data=buf.subarray(lp+30+ln+le, lp+30+ln+le+csize);
+    if(method===8){
+      data=new Uint8Array(await new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer());
+    } else if(method!==0){ throw new Error('不支持的压缩方式'); }
+    out.set(name,data);
+    p+=46+nameLen+extraLen+commentLen;
+  }
+  return out;
+}
+function clearAll(){
+  clearTimeout(imgTimer);
+  clips.forEach(c=>{ try{ URL.revokeObjectURL(c.url); }catch(e){} });
+  clips=[]; cur=-1;
+  video.pause(); video.removeAttribute('src'); video.style.display='block';
+  image.style.display='none'; image.removeAttribute('src');
+  progress.disabled=false;
+  renderStrip(); updateInfo(); syncPlayIcon(); syncEditBar();
+  $('#empty').style.display='flex';
+}
+async function importZip(file){
+  const map=await readZipFile(file);
+  const cfgRaw=map.get('config.json');
+  if(!cfgRaw) throw new Error('zip 里没有 config.json');
+  const cfg=JSON.parse(new TextDecoder().decode(cfgRaw));
+  const files=[];
+  for(const c of cfg.clips||[]){
+    const data=map.get(c.path);
+    if(!data) continue;
+    files.push(new File([data], c.file, {type:guessType(c.file)}));
+  }
+  if(!files.length) throw new Error('zip 里没有视频/图片文件');
+  clearAll();
+  addFiles(files);
+  const byName=new Map(); clips.forEach(cl=>byName.set(cl.name,cl));
+  (cfg.clips||[]).forEach(c=>{
+    const cl=byName.get(c.file);
+    if(!cl) return;
+    if(c.label) cl.label=c.label;
+    if(c.vol!=null) cl.vol=c.vol;
+    if(c.speed) cl.speed=c.speed;
+  });
+  if(cfg.prefs){
+    if(['0.5','0.75','1','1.25','1.5','1.75','2'].includes(String(cfg.prefs.speed))) speedSel.value=String(cfg.prefs.speed);
+    if(cfg.prefs.vol!=null) volume.value=cfg.prefs.vol;
+    chain=!!cfg.prefs.chain; loop=!!cfg.prefs.loop; abOn=!!cfg.prefs.abOn;
+    video.volume=volume.value/100;
+    video.playbackRate=parseFloat(speedSel.value);
+    savePrefs();
+  }
+  renderStrip(); updateInfo(); syncEditBar(); syncToggles();
+}
+
 function pickFiles(){ $('#fileInput').click(); }
 function pickFolder(){ $('#dirInput').click(); }
 $('#fileInput').addEventListener('change', e=>{ addFiles(e.target.files); e.target.value=''; });
@@ -680,16 +812,10 @@ $('#btnFolder').onclick = pickFolder;
 $('#btnFolder2').onclick = pickFolder;
 $('#btnPrev').onclick = prev;
 $('#btnNext').onclick = next;
-$('#btnClear').onclick = ()=>{ clearTimeout(imgTimer);
-  clips.forEach(c=>{ try{ URL.revokeObjectURL(c.url); }catch(e){} });
-  clips = []; cur = -1;
-  video.pause(); video.removeAttribute('src'); video.style.display = 'block';
-  image.style.display = 'none'; image.removeAttribute('src');
-  progress.disabled = false;
-  renderStrip(); updateInfo(); syncPlayIcon();
-  syncEditBar();
-  $('#empty').style.display = 'flex';
-};
+$('#btnClear').onclick = clearAll;
+$('#btnSave').onclick = ()=>exportZip().catch(e=>toast('保存失败：'+e.message));
+$('#btnImport').onclick = ()=>$('#zipInput').click();
+$('#zipInput').addEventListener('change', e=>{ const f=e.target.files[0]; e.target.value=''; if(f) importZip(f).catch(err=>toast('导入失败：'+err.message)); });
 btnPlay.onclick = togglePlay;
 centerPlay.onclick = togglePlay;
 $('#btnMute').onclick = ()=>{ video.muted = !video.muted; syncVol(); };
