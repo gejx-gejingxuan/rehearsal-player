@@ -39,6 +39,7 @@ header .spacer{flex:1}
 /* ---------- 视频区 ---------- */
 #stage{position:relative; flex:1; min-height:0; background:#000}
 #video{position:absolute; inset:0; width:100%; height:100%; object-fit:contain; background:#000; cursor:pointer}
+#image{position:absolute; inset:0; width:100%; height:100%; object-fit:contain; background:#000; display:none}
 #empty{
   position:absolute; inset:0; display:flex; flex-direction:column; align-items:center;
   justify-content:center; gap:14px; background:#000; color:#e8ebf0; text-align:center; padding:20px;
@@ -86,24 +87,24 @@ select.ctl{padding:5px 6px}
 /* ---------- 卡片条 ---------- */
 #strip{
   display:flex; gap:10px; padding:10px 12px; overflow-x:auto; overflow-y:hidden;
-  min-height:106px; background:var(--strip);
+  min-height:150px; background:var(--strip);
 }
 .card{
-  flex:0 0 150px; display:flex; flex-direction:column; align-items:flex-start; gap:6px;
-  padding:10px 12px; border-radius:10px; cursor:pointer; text-align:left;
+  flex:0 0 200px; display:flex; flex-direction:column; align-items:flex-start; gap:8px;
+  padding:14px 16px; border-radius:12px; cursor:pointer; text-align:left;
   background:var(--control); border:1.5px solid var(--card-border);
   font-family:inherit; transition:background .12s, transform .12s;
 }
 .card:hover{background:var(--card-hover); transform:translateY(-1px)}
 .card.active{background:var(--active-bg); border-color:var(--c,#3e8edc)}
 .badge{
-  width:26px; height:26px; border-radius:50%; flex:none;
+  width:32px; height:32px; border-radius:50%; flex:none;
   display:flex; align-items:center; justify-content:center;
-  color:#fff; font-weight:700; font-size:13px; background:var(--c,#3e8edc);
+  color:#fff; font-weight:700; font-size:15px; background:var(--c,#3e8edc);
 }
-.card .name{font-size:12.5px; color:#404650; width:100%; overflow:hidden; text-overflow:ellipsis;
+.card .name{font-size:14px; color:#404650; width:100%; overflow:hidden; text-overflow:ellipsis;
   white-space:nowrap; font-weight:600}
-.card .dur{font-size:11.5px; color:#7c8492; font-variant-numeric:tabular-nums}
+.card .dur{font-size:12.5px; color:#7c8492; font-variant-numeric:tabular-nums}
 .card.active .name{color:#fff}
 .card.active .dur{color:#b8c0cc}
 /* ---------- 提示与帮助 ---------- */
@@ -139,21 +140,23 @@ kbd{
 <header>
 <div class="title">🎬 剧本排练播放器</div>
 <div class="spacer"></div>
-  <button class="btn primary" id="btnFiles">添加视频</button>
+  <button class="btn primary" id="btnFiles">添加视频 / 图片</button>
   <button class="btn" id="btnFolder">添加文件夹</button>
+  <button class="btn" id="btnClear">清空</button>
   <button class="btn" id="btnLoop">循环</button>
   <button class="btn" id="btnChain">连播</button>
   <button class="btn" id="btnHelp">❓ 快捷键</button>
-  <input type="file" id="fileInput" multiple accept="video/*,.mp4,.m4v,.mov,.webm,.mkv,.avi,.ogv,.flv,.ts,.wmv" hidden>
+  <input type="file" id="fileInput" multiple accept="video/*,image/*,.mp4,.m4v,.mov,.webm,.mkv,.avi,.ogv,.flv,.ts,.wmv,.jpg,.jpeg,.png,.gif,.webp,.bmp" hidden>
   <input type="file" id="dirInput" webkitdirectory multiple hidden>
 </header>
 
 <div id="stage">
   <video id="video" preload="auto" playsinline></video>
+  <img id="image" alt="">
   <div id="empty">
-    <div class="big">把视频拖进来，开始排练</div>
+    <div class="big">把视频 / 图片拖进来，开始排练</div>
     <div class="btns">
-      <button class="btn primary" id="btnFiles2">添加视频</button>
+      <button class="btn primary" id="btnFiles2">添加视频 / 图片</button>
       <button class="btn" id="btnFolder2">添加文件夹</button>
     </div>
   </div>
@@ -170,6 +173,8 @@ kbd{
     </div>
     <span id="timeLabel">00:00 / 00:00</span>
     <span class="sep"></span>
+    <button class="ctl" id="btnPrev" title="上一个片段 (Alt+左键)">◀</button>
+    <button class="ctl" id="btnNext" title="下一个片段 (Alt+右键)">▶</button>
     <span id="posLabel">0/0</span>
     <span id="nameLabel"></span>
     <span class="sep"></span>
@@ -204,6 +209,7 @@ kbd{
       <tr><td><kbd>F</kbd> / 双击画面</td><td>全屏播放（隐藏底栏）</td></tr>
       <tr><td><kbd>G</kbd></td><td>半全屏（保留底栏卡片）</td></tr>
       <tr><td><kbd>Esc</kbd></td><td>退出全屏</td></tr>
+      <tr><td><kbd>Alt</kbd>+<kbd>左键</kbd> / <kbd>右键</kbd></td><td>上一个 / 下一个片段</td></tr>
       <tr><td><kbd>←</kbd> / <kbd>→</kbd></td><td>快退 / 快进 5 秒</td></tr>
       <tr><td><kbd>↑</kbd> / <kbd>↓</kbd> 或 滚轮</td><td>音量增大 / 减小</td></tr>
       <tr><td><kbd>M</kbd></td><td>静音 / 取消静音</td></tr>
@@ -217,6 +223,7 @@ kbd{
 "use strict";
 const $ = s => document.querySelector(s);
 const video = $('#video'), stage = $('#stage'), strip = $('#strip');
+const image = $('#image');
 const progress = $('#progress'), timeLabel = $('#timeLabel');
 const nameLabel = $('#nameLabel'), posLabel = $('#posLabel');
 const volume = $('#volume'), speedSel = $('#speed');
@@ -226,12 +233,15 @@ const btnPlay = $('#btnPlay'), btnLoop = $('#btnLoop'), btnChain = $('#btnChain'
 
 const palette = ['#3e8edc','#e67e22','#2ecc71','#9b59b6','#e74c3c','#1abc9c','#f1c40f','#3498db','#e65178','#607d8b'];
 const videoExt = /\.(mp4|m4v|mov|webm|mkv|avi|ogv|flv|ts|wmv|3gp)$/i;
+const imageExt = /\.(jpg|jpeg|png|gif|webp|bmp|svg)$/i;
+const mediaExt = /\.(mp4|m4v|mov|webm|mkv|avi|ogv|flv|ts|wmv|3gp|jpg|jpeg|png|gif|webp|bmp|svg)$/i;
 
 let clips = [];            // {name, url, duration}
 let cur = -1;
 let seeking = false;
 let chain = false, loop = false, abOn = false, A = null, B = null;
 let toastTimer = null;
+let imgTimer = null;
 
 /* ---------- 工具 ---------- */
 function fmt(t){
@@ -265,20 +275,22 @@ video.playbackRate = parseFloat(speedSel.value);
 
 /* ---------- 文件导入 ---------- */
 function addFiles(files){
-  const list = [...files].filter(f => f && videoExt.test(f.name))
+  const list = [...files].filter(f => f && mediaExt.test(f.name))
     .sort((a,b)=>a.name.localeCompare(b.name,'zh',{numeric:true}));
-  if(!list.length){ toast('未找到可播放的视频文件'); return; }
+  if(!list.length){ toast('未找到可播放的媒体文件'); return; }
   for(const f of list){
     const url = URL.createObjectURL(f);
-    clips.push({ name:f.name, url, duration:NaN });
+    const type = videoExt.test(f.name) ? 'video' : 'image';
+    clips.push({ name:f.name, url, duration:NaN, type });
   }
   renderStrip();
   measureDurations(clips.length - list.length, list.length);
-    $('#empty').style.display = 'none';
-    if(cur < 0) loadClip(0, true);
-  }
+  $('#empty').style.display = 'none';
+  if(cur < 0) loadClip(0, true);
+}
 function measureDurations(start, count){
   for(let i = start; i < start + count; i++){
+    if(!clips[i] || clips[i].type !== 'video') continue;
     (function(idx){
       const el = document.createElement('video');
       el.preload = 'metadata'; el.muted = true;
@@ -306,7 +318,7 @@ function renderStrip(){
     const b = document.createElement('span'); b.className='badge'; b.textContent = String(i+1);
     const n = document.createElement('span'); n.className='name'; n.textContent = c.name;
     const t = document.createElement('span'); t.className='dur';
-    t.textContent = isFinite(c.duration) ? fmt(c.duration) : '--:--';
+    t.textContent = c.type === 'image' ? '图片' : (isFinite(c.duration) ? fmt(c.duration) : '--:--');
     d.appendChild(b); d.appendChild(n); d.appendChild(t);
     d.onclick = ()=>loadClip(i, true);
     strip.appendChild(d);
@@ -317,21 +329,55 @@ function renderStrip(){
 function loadClip(i, autoplay){
   if(i < 0 || i >= clips.length) return;
   cur = i;
-  if(video.getAttribute('src') !== clips[i].url){
-    video.src = clips[i].url;
+  const c = clips[i];
+  clearTimeout(imgTimer);
+  if(c.type === 'image'){
+    video.pause();
+    video.removeAttribute('src');
+    image.src = c.url;
+    image.style.display = 'block';
+    video.style.display = 'none';
+    progress.disabled = true;
+    timeLabel.textContent = '图片';
+    if(autoplay) armImageTimer();
+  } else {
+    image.style.display = 'none';
+    video.style.display = 'block';
+    progress.disabled = false;
+    if(video.getAttribute('src') !== c.url){ video.src = c.url; }
+    video.playbackRate = parseFloat(speedSel.value);
+    if(autoplay) video.play().catch(()=>{});
   }
-  video.playbackRate = parseFloat(speedSel.value);
-  if(autoplay) video.play().catch(()=>{});
   renderStrip();
   const cards = strip.children;
   if(cards[i]) cards[i].scrollIntoView({block:'nearest', inline:'nearest'});
   updateInfo();
+  syncPlayIcon();
 }
-  function goTo(i){
-    loadClip(i, true);
+function armImageTimer(){
+  clearTimeout(imgTimer);
+  if(cur >= 0 && clips[cur] && clips[cur].type === 'image' && chain){
+    imgTimer = setTimeout(()=>{ if(cur >= 0 && clips[cur] && clips[cur].type === 'image' && chain){ loadClip((cur + 1) % clips.length, true); } }, 5000);
+  }
 }
-  function togglePlay(){
-    if(video.paused) video.play().catch(()=>{});
+function goTo(i){
+  loadClip(i, true);
+}
+function prev(){
+  if(!clips.length) return;
+  clearTimeout(imgTimer);
+  loadClip((cur - 1 + clips.length) % clips.length, true);
+}
+function next(){
+  if(!clips.length) return;
+  clearTimeout(imgTimer);
+  loadClip((cur + 1) % clips.length, true);
+}
+function togglePlay(){
+  if(!clips.length) return;
+  const c = clips[cur];
+  if(c && c.type === 'image'){ next(); return; }
+  if(video.paused) video.play().catch(()=>{});
   else video.pause();
 }
 function seekBy(s){
@@ -348,9 +394,10 @@ function syncVol(){
   btnMute.textContent = video.muted ? '🔇' : '🔊';
 }
 function syncPlayIcon(){
-  btnPlay.textContent = video.paused ? '▶' : '⏸';
-  centerPlay.classList.toggle('show', video.paused && clips.length > 0);
-  centerPlay.textContent = video.paused ? '▶' : '⏸';
+  const isImg = clips[cur] && clips[cur].type === 'image';
+  btnPlay.textContent = isImg ? '▶' : (video.paused ? '▶' : '⏸');
+  centerPlay.classList.toggle('show', clips.length > 0 && (isImg || video.paused));
+  centerPlay.textContent = btnPlay.textContent;
 }
 function updateTime(){
   const t = video.currentTime || 0, d = video.duration || 0;
@@ -389,6 +436,7 @@ function syncToggles(){
   btnLoop.classList.toggle('on', loop);
   btnChain.classList.toggle('on', chain);
   btnAB.classList.toggle('on', abOn);
+  armImageTimer();
   savePrefs();
 }
 
@@ -409,6 +457,7 @@ video.addEventListener('timeupdate', ()=>{
   }
 });
 video.addEventListener('ended', ()=>{
+  if(cur >= 0 && clips[cur] && clips[cur].type === 'image') return;
   if(abOn && A != null && B != null && B > A){ video.currentTime = A; video.play().catch(()=>{}); return; }
   if(loop){ video.currentTime = 0; video.play().catch(()=>{}); return; }
   if(chain && clips.length > 1){ loadClip((cur + 1) % clips.length, true); return; }
@@ -432,10 +481,10 @@ volume.addEventListener('input', ()=>{
 speedSel.addEventListener('change', ()=>{ video.playbackRate = parseFloat(speedSel.value); savePrefs(); });
 
 stage.addEventListener('click', e=>{
-  if(e.target === stage || e.target === video) togglePlay();
+  if(e.target === stage || e.target === video || e.target === image) togglePlay();
 });
 stage.addEventListener('dblclick', e=>{
-  if(e.target === stage || e.target === video){ e.preventDefault(); toggleFull(); }
+  if(e.target === stage || e.target === video || e.target === image){ e.preventDefault(); toggleFull(); }
 });
 stage.addEventListener('wheel', e=>{
   if(clips.length){ e.preventDefault(); adjVol(e.deltaY < 0 ? 0.05 : -0.05); }
@@ -499,6 +548,14 @@ window.addEventListener('keydown', e=>{
 });
 
 /* ---------- 拖拽导入 ---------- */
+/* ---------- Alt + 鼠标切段 ---------- */
+window.addEventListener('mousedown', e=>{
+  if(!e.altKey || !clips.length) return;
+  if(e.button === 0){ e.preventDefault(); prev(); }
+  else if(e.button === 2){ e.preventDefault(); next(); }
+});
+window.addEventListener('contextmenu', e=>{ if(e.altKey) e.preventDefault(); });
+
 window.addEventListener('dragover', e=>{ e.preventDefault(); });
 window.addEventListener('drop', e=>{
   e.preventDefault();
@@ -548,6 +605,17 @@ $('#btnFiles').onclick = pickFiles;
 $('#btnFiles2').onclick = pickFiles;
 $('#btnFolder').onclick = pickFolder;
 $('#btnFolder2').onclick = pickFolder;
+$('#btnPrev').onclick = prev;
+$('#btnNext').onclick = next;
+$('#btnClear').onclick = ()=>{ clearTimeout(imgTimer);
+  clips.forEach(c=>{ try{ URL.revokeObjectURL(c.url); }catch(e){} });
+  clips = []; cur = -1;
+  video.pause(); video.removeAttribute('src'); video.style.display = 'block';
+  image.style.display = 'none'; image.removeAttribute('src');
+  progress.disabled = false;
+  renderStrip(); updateInfo(); syncPlayIcon();
+  $('#empty').style.display = 'flex';
+};
 btnPlay.onclick = togglePlay;
 centerPlay.onclick = togglePlay;
 $('#btnMute').onclick = ()=>{ video.muted = !video.muted; syncVol(); };
