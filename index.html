@@ -529,7 +529,7 @@ async function convertAll(){
   const targets = clips.filter(function(c){ return c.unsupported; });
   if(!targets.length){ toast('没有需要转码的片段'); return; }
   const total = targets.length;
-  busyShow('正在准备转码组件…', '首次使用需下载约 32MB，请稍候');
+  busyShow('正在准备转码组件…', '首次使用需下载组件（约 9MB），请稍候');
   let ff;
   try{ ff = await loadFFmpeg(); }
   catch(e){ busyHide(); toast('转码组件加载失败，请检查网络后重试'); return; }
