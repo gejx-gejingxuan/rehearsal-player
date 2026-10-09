@@ -166,6 +166,15 @@ kbd{
 }
 .switch.on{background:var(--accent); border-color:var(--accent)}
 .switch.on::after{left:22px}
+/* ---------- 转码 ---------- */
+#busy{position:fixed; inset:0; background:rgba(15,18,22,.45); display:none; align-items:center; justify-content:center; z-index:80}
+#busy.show{display:flex}
+#busyBox{background:var(--control); border:1px solid var(--border); border-radius:12px; padding:20px 24px; width:360px; max-width:90vw}
+#busyText{font-size:14px; margin-bottom:12px; text-align:center}
+#busyBar{height:6px; border-radius:3px; background:#d7dce5; overflow:hidden}
+#busyBar i{display:block; height:100%; width:0; background:var(--accent); transition:width .2s}
+#busyNote{font-size:12px; color:var(--text-dim); margin-top:10px; text-align:center; min-height:16px}
+.card .dur.bad{color:#c9772b; font-weight:600}
 </style>
 </head>
 <body>
@@ -179,6 +188,7 @@ kbd{
   <button class="btn" id="btnSave" title="打包所有片段与设置，下载 zip">保存 ZIP</button>
   <button class="btn" id="btnImport" title="从 zip 恢复片段与设置（替换当前列表）">导入 ZIP</button>
   <input type="file" id="zipInput" accept=".zip,application/zip" hidden>
+  <button class="btn" id="btnConvert" style="display:none" title="本机无法播放的片段（多为 H.265），转成 H.264 后即可播放">转码</button>
   <button class="btn" id="btnLoop">循环</button>
   <button class="btn" id="btnChain">连播</button>
   <button class="btn" id="btnHelp">❓ 快捷键</button>
@@ -247,6 +257,14 @@ kbd{
     <button class="ctl" id="btnUp" title="上移">↑</button>
     <button class="ctl" id="btnDown" title="下移">↓</button>
     <button class="ctl" id="btnDel" title="删除">删除</button>
+  </div>
+</div>
+
+<div id="busy">
+  <div id="busyBox">
+    <div id="busyText">正在转码…</div>
+    <div id="busyBar"><i></i></div>
+    <div id="busyNote"></div>
   </div>
 </div>
 
@@ -339,6 +357,203 @@ loadPrefs();
 video.volume = volume.value / 100;
 video.playbackRate = parseFloat(speedSel.value);
 
+/* ---------- 编码检测（判断本机能否解码） ---------- */
+const CODEC_LABEL = {hvc1:'H.265', hev1:'H.265', hvc2:'H.265', avc1:'H.264', avc3:'H.264', avc4:'H.264', mp4v:'MPEG-4', vp09:'VP9', vp08:'VP8', av01:'AV1'};
+const VIDEO_TAGS = ['avc1','avc3','avc4','hvc1','hev1','hvc2','mp4v','vp09','vp08','av01'];
+const AUDIO_TAGS = ['mp4a','ac-3','ec-3','Opus','alac'];
+const CODEC_TEST = {
+  avc1:['video/mp4; codecs="avc1.42E01E"','video/mp4; codecs="avc1.4D401E"','video/mp4; codecs="avc1.64001E"'],
+  avc3:['video/mp4; codecs="avc1.42E01E"','video/mp4; codecs="avc1.4D401E"','video/mp4; codecs="avc1.64001E"'],
+  hvc1:['video/mp4; codecs="hvc1.1.6.L93.B0"','video/mp4; codecs="hvc1.1.6.L120.B0"','video/mp4; codecs="hvc1.1.6.L150.B0"'],
+  hev1:['video/mp4; codecs="hev1.1.6.L93.B0"','video/mp4; codecs="hev1.1.6.L120.B0"','video/mp4; codecs="hev1.1.6.L150.B0"'],
+  vp09:['video/webm; codecs="vp9"','video/mp4; codecs="vp09.00.10.08"'],
+  av01:['video/mp4; codecs="av01.0.05M.08"']
+};
+function u32(b,o){ return ((b[o]<<24)|(b[o+1]<<16)|(b[o+2]<<8)|b[o+3])>>>0; }
+function fcc(b,o){ return String.fromCharCode(b[o],b[o+1],b[o+2],b[o+3]); }
+async function readSlice(file, from, to){ return new Uint8Array(await file.slice(from, to).arrayBuffer()); }
+function walkBox(buf, start, end, cb){
+  let i = start;
+  while(i + 8 <= end){
+    let size = u32(buf, i), hsz = 8;
+    const typ = fcc(buf, i + 4);
+    if(size === 1){
+      if(i + 16 > end) return;
+      size = Number(new DataView(buf.buffer, buf.byteOffset + i + 8, 8).getBigUint64(0));
+      hsz = 16;
+    } else if(size === 0){ size = end - i; }
+    if(size < hsz || i + size > end) return;
+    cb(typ, i + hsz, i + size);
+    i += size;
+  }
+}
+async function probeCodec(file){
+  const total = file.size;
+  let off = 0, moov = null, guard = 0;
+  while(off + 8 <= total && guard++ < 200){
+    const h = await readSlice(file, off, Math.min(off + 16, total));
+    if(h.length < 8) return null;
+    let size = u32(h, 0), hsz = 8;
+    if(size === 1){
+      if(h.length < 16) return null;
+      size = Number(new DataView(h.buffer, h.byteOffset + 8, 8).getBigUint64(0));
+      hsz = 16;
+    } else if(size === 0){ size = total - off; }
+    if(size < hsz) return null;
+    if(fcc(h, 4) === 'moov'){ moov = {start: off + hsz, size: size - hsz}; break; }
+    off += size;
+  }
+  if(!moov || moov.size <= 0 || moov.size > 64 * 1024 * 1024) return null;
+  const buf = await readSlice(file, moov.start, moov.start + moov.size);
+  const tags = [];
+  (function rec(s, e){
+    walkBox(buf, s, e, function(typ, body, bodyEnd){
+      if(typ === 'stsd'){
+        const count = u32(buf, body + 4);
+        let j = body + 8;
+        for(let k = 0; k < count && j + 8 <= bodyEnd; k++){
+          tags.push(fcc(buf, j + 4));
+          j += Math.max(u32(buf, j), 8);
+        }
+      } else if(typ === 'moov' || typ === 'trak' || typ === 'mdia' || typ === 'minf' || typ === 'stbl'){
+        rec(body, bodyEnd);
+      }
+    });
+  })(0, buf.length);
+  return { v: tags.find(function(t){ return VIDEO_TAGS.indexOf(t) >= 0; }) || null,
+           a: tags.find(function(t){ return AUDIO_TAGS.indexOf(t) >= 0; }) || null };
+}
+function canPlayMime(mime){
+  try{ if(window.MediaSource && MediaSource.isTypeSupported && MediaSource.isTypeSupported(mime)) return true; }catch(e){}
+  try{ return document.createElement('video').canPlayType(mime) !== ''; }catch(e){ return false; }
+}
+function codecSupported(tag){
+  const list = CODEC_TEST[tag];
+  if(!list) return true;
+  return list.some(canPlayMime);
+}
+function codecName(tag){ return tag ? (CODEC_LABEL[tag] || tag) : ''; }
+async function probeClips(start, count){
+  for(let i = start; i < start + count; i++){
+    const c = clips[i];
+    if(!c || c.type !== 'video') continue;
+    let info = null;
+    try{ info = await probeCodec(c.file); }catch(e){}
+    if(!info || !info.v){ c.codec = null; c.unsupported = null; }
+    else { c.codec = info.v; c.unsupported = !codecSupported(info.v); }
+    renderStrip();
+  }
+}
+
+/* ---------- 转码：H.265 → H.264 ---------- */
+const FF_CDN = ['https://cdn.jsdelivr.net/npm', 'https://unpkg.com'];
+let ffInstance = null, ffLoading = null;
+const busyEl = $('#busy'), busyText = $('#busyText'), busyBar = $('#busyBar i'), busyNote = $('#busyNote');
+function busyShow(text, note){ busyText.textContent = text; busyNote.textContent = note || ''; busyBar.style.width = '0%'; busyEl.classList.add('show'); }
+function busySet(ratio, text, note){
+  if(text) busyText.textContent = text;
+  if(note != null) busyNote.textContent = note;
+  busyBar.style.width = Math.round(Math.max(0, Math.min(1, ratio)) * 100) + '%';
+}
+function busyHide(){ busyEl.classList.remove('show'); }
+function injectScript(src){
+  return new Promise(function(res, rej){
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = function(){ res(); };
+    s.onerror = function(){ rej(new Error('加载失败 ' + src)); };
+    document.head.appendChild(s);
+  });
+}
+async function fetchBlobURL(url, type){
+  const r = await fetch(url);
+  if(!r.ok) throw new Error(url + ' HTTP ' + r.status);
+  return URL.createObjectURL(new Blob([await r.blob()], {type}));
+}
+function loadFFmpeg(){
+  if(ffInstance) return Promise.resolve(ffInstance);
+  if(ffLoading) return ffLoading;
+  ffLoading = (async function(){
+    let err = null;
+    for(const base of FF_CDN){
+      try{
+        if(!window.FFmpegWASM) await injectScript(base + '/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.js');
+        if(!window.FFmpegUtil) await injectScript(base + '/@ffmpeg/util@0.12.1/dist/umd/index.js');
+        const ff = new FFmpegWASM.FFmpeg();
+        const coreURL = await fetchBlobURL(base + '/@ffmpeg/core@0.12.6/dist/esm/ffmpeg-core.js', 'text/javascript');
+        const wasmURL = await fetchBlobURL(base + '/@ffmpeg/core@0.12.6/dist/esm/ffmpeg-core.wasm', 'application/wasm');
+        const classWorkerURL = await fetchBlobURL(base + '/@ffmpeg/ffmpeg@0.12.10/dist/umd/814.ffmpeg.js', 'text/javascript');
+        await ff.load({coreURL, wasmURL, classWorkerURL});
+        ffInstance = ff;
+        return ff;
+      }catch(e){ err = e; }
+    }
+    ffLoading = null;
+    throw err || new Error('转码组件加载失败');
+  })();
+  return ffLoading;
+}
+async function transcodeToH264(ff, clip){
+  const stamp = Date.now();
+  const inName = 'in' + stamp + '.mp4';
+  const outName = 'out' + stamp + '.mp4';
+  await ff.writeFile(inName, new Uint8Array(await clip.file.arrayBuffer()));
+  try{
+    await ff.exec(['-i', inName, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
+                   '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '128k',
+                   '-movflags', '+faststart', outName]);
+    const data = await ff.readFile(outName);
+    const name = clip.name.replace(/\.[^.]+$/, '') + '.mp4';
+    const file = new File([data], name, {type: 'video/mp4'});
+    try{ URL.revokeObjectURL(clip.url); }catch(e){}
+    clip.file = file;
+    clip.url = URL.createObjectURL(file);
+    clip.name = name;
+    clip.codec = 'avc1';
+    clip.unsupported = false;
+    clip.duration = NaN;
+    return true;
+  }finally{
+    try{ await ff.deleteFile(inName); }catch(e){}
+    try{ await ff.deleteFile(outName); }catch(e){}
+  }
+}
+function markConvertBtn(){
+  const btn = $('#btnConvert');
+  if(!btn) return;
+  const n = clips.filter(function(c){ return c.unsupported; }).length;
+  btn.style.display = n ? '' : 'none';
+  btn.textContent = n > 1 ? ('转码 ' + n + ' 个') : '转码';
+}
+async function convertAll(){
+  const targets = clips.filter(function(c){ return c.unsupported; });
+  if(!targets.length){ toast('没有需要转码的片段'); return; }
+  const total = targets.length;
+  busyShow('正在准备转码组件…', '首次使用需下载约 32MB，请稍候');
+  let ff;
+  try{ ff = await loadFFmpeg(); }
+  catch(e){ busyHide(); toast('转码组件加载失败，请检查网络后重试'); return; }
+  let ok = 0;
+  for(let i = 0; i < total; i++){
+    const c = targets[i];
+    const onProg = function(ev){
+      const p = (ev && isFinite(ev.progress)) ? Math.max(0, Math.min(1, ev.progress)) : 0;
+      busySet((i + p) / total, '转码中 ' + (i + 1) + '/' + total + '：' + c.name);
+    };
+    busySet(i / total, '转码中 ' + (i + 1) + '/' + total + '：' + c.name, '');
+    ff.on('progress', onProg);
+    const idx = clips.indexOf(c);
+    try{ await transcodeToH264(ff, c); ok++; if(idx >= 0) measureDurations(idx, 1); }
+    catch(e){ console.warn('转码失败', c.name, e); }
+    ff.off('progress', onProg);
+    renderStrip();
+    if(cur >= 0 && clips[cur] === c) loadClip(cur, false);
+  }
+  busyHide();
+  renderStrip();
+  toast(ok === total ? ('已转码 ' + ok + ' 个片段') : ('转码完成 ' + ok + '/' + total));
+}
+
 /* ---------- 文件导入 ---------- */
 function addFiles(files){
   const list = [...files].filter(f => f && mediaExt.test(f.name))
@@ -347,10 +562,11 @@ function addFiles(files){
   for(const f of list){
     const url = URL.createObjectURL(f);
     const type = videoExt.test(f.name) ? 'video' : 'image';
-    clips.push({ name:f.name, url, duration:NaN, type, label:null, vol:video.volume, speed:parseFloat(speedSel.value), file:f });
+    clips.push({ name:f.name, url, duration:NaN, type, label:null, vol:video.volume, speed:parseFloat(speedSel.value), file:f, codec:null, unsupported:null });
   }
   renderStrip();
   measureDurations(clips.length - list.length, list.length);
+  probeClips(clips.length - list.length, list.length);
   $('#empty').style.display = 'none';
   if(cur < 0) loadClip(0, true);
 }
@@ -384,11 +600,14 @@ function renderStrip(){
     const b = document.createElement('span'); b.className='badge'; b.textContent = String(i+1);
     const n = document.createElement('span'); n.className='name'; n.textContent = c.label || c.name;
     const t = document.createElement('span'); t.className='dur';
-    t.textContent = c.type === 'image' ? '图片' : (isFinite(c.duration) ? fmt(c.duration) : '--:--');
+    if(c.type === 'image'){ t.textContent = '图片'; }
+    else if(c.unsupported){ t.className = 'dur bad'; t.textContent = (codecName(c.codec) ? codecName(c.codec) + ' · ' : '') + '需转码'; }
+    else { t.textContent = isFinite(c.duration) ? fmt(c.duration) : '--:--'; }
     d.appendChild(b); d.appendChild(n); d.appendChild(t);
     d.onclick = ()=>loadClip(i, true);
     strip.appendChild(d);
   });
+  markConvertBtn();
 }
 
 /* ---------- 播放控制 ---------- */
@@ -562,7 +781,14 @@ function syncToggles(){
 /* ---------- 事件 ---------- */
 video.addEventListener('play', syncPlayIcon);
 video.addEventListener('pause', syncPlayIcon);
-video.addEventListener('loadedmetadata', ()=>{ updateTime(); updateAB(); });
+video.addEventListener('loadedmetadata', ()=>{
+  updateTime(); updateAB();
+  const c = clips[cur];
+  if(c && c.type === 'video' && !c.unsupported && video.videoWidth === 0){
+    c.unsupported = true;
+    renderStrip();
+  }
+});
 video.addEventListener('durationchange', ()=>{
   if(cur >= 0 && isFinite(video.duration)){
     clips[cur].duration = video.duration;
@@ -871,6 +1097,7 @@ btnChain.onclick = ()=>{ chain = !chain; syncToggles(); };
 $('#btnSetA').onclick = setA;
 $('#btnSetB').onclick = setB;
 $('#btnClearAB').onclick = clearAB;
+$('#btnConvert').onclick = convertAll;
 $('#btnHelp').onclick = ()=>$('#help').classList.add('show');
 $('#btnSettings').onclick = ()=>{ syncCenterToggle(); $('#settings').classList.add('show'); };
 $('#btnSettingsClose').onclick = ()=>$('#settings').classList.remove('show');
