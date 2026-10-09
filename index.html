@@ -555,9 +555,9 @@ async function convertAll(){
 }
 
 /* ---------- 文件导入 ---------- */
-function addFiles(files){
-  const list = [...files].filter(f => f && mediaExt.test(f.name))
-    .sort((a,b)=>a.name.localeCompare(b.name,'zh',{numeric:true}));
+function addFiles(files, keepOrder){
+  const list = [...files].filter(f => f && mediaExt.test(f.name));
+  if(!keepOrder) list.sort((a,b)=>a.name.localeCompare(b.name,'zh',{numeric:true}));
   if(!list.length){ toast('未找到可播放的媒体文件'); return; }
   for(const f of list){
     const url = URL.createObjectURL(f);
@@ -1038,22 +1038,21 @@ async function importZip(file){
   const cfgRaw=map.get('config.json');
   if(!cfgRaw) throw new Error('zip 里没有 config.json');
   const cfg=JSON.parse(new TextDecoder().decode(cfgRaw));
-  const files=[];
+  const items=[];
   for(const c of cfg.clips||[]){
     const data=map.get(c.path);
     if(!data) continue;
-    files.push(new File([data], c.file, {type:guessType(c.file)}));
+    items.push({ meta:c, file:new File([data], c.file, {type:guessType(c.file)}) });
   }
-  if(!files.length) throw new Error('zip 里没有视频/图片文件');
+  if(!items.length) throw new Error('zip 里没有视频/图片文件');
   clearAll();
-  addFiles(files);
-  const byName=new Map(); clips.forEach(cl=>byName.set(cl.name,cl));
-  (cfg.clips||[]).forEach(c=>{
-    const cl=byName.get(c.file);
+  addFiles(items.map(it=>it.file), true);
+  items.forEach((it,i)=>{
+    const cl=clips[i];
     if(!cl) return;
-    if(c.label) cl.label=c.label;
-    if(c.vol!=null) cl.vol=c.vol;
-    if(c.speed) cl.speed=c.speed;
+    if(it.meta.label) cl.label=it.meta.label;
+    if(it.meta.vol!=null) cl.vol=it.meta.vol;
+    if(it.meta.speed) cl.speed=it.meta.speed;
   });
   if(cfg.prefs){
     if(['0.5','0.75','1','1.25','1.5','1.75','2'].includes(String(cfg.prefs.speed))) speedSel.value=String(cfg.prefs.speed);
