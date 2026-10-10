@@ -12,17 +12,18 @@
   --card-border:#c6ccd8; --card-hover:#eef4fc; --active-bg:#2f343c;
 }
 *{box-sizing:border-box; margin:0; padding:0}
-html,body{height:100%}
+html{height:100%}
 body{
-  display:flex; flex-direction:column; height:100%;
+  display:flex; flex-direction:column; min-height:100%;
   font-family:"Segoe UI","Microsoft YaHei",system-ui,sans-serif;
-  background:var(--panel); color:var(--text); overflow:hidden;
+  background:var(--panel); color:var(--text); overflow-x:hidden;
   -webkit-user-select:none; user-select:none;
 }
 /* ---------- 顶栏 ---------- */
 header{
   display:flex; align-items:center; gap:10px; padding:10px 16px;
   background:var(--control); border-bottom:1px solid var(--border); flex:none;
+  position:sticky; top:0; z-index:50; box-shadow:0 1px 4px rgba(30,40,60,.06);
 }
 header .title{font-size:16px; font-weight:700; white-space:nowrap}
 header .sub{font-size:12px; color:var(--text-dim); white-space:nowrap}
@@ -37,7 +38,8 @@ header .spacer{flex:1}
 .btn.primary:hover{background:#337cc2}
 .btn.on{background:#dcebfa; border-color:var(--accent); color:#1f5f9e; font-weight:600}
 /* ---------- 视频区 ---------- */
-#stage{position:relative; flex:1; min-height:0; background:#000}
+#stage{position:relative; flex:none; height:min(58vh,56.25vw); min-height:240px; background:#000}
+#stage:fullscreen{height:100%; min-height:0; width:100%}
 #video{position:absolute; inset:0; width:100%; height:100%; object-fit:contain; background:#000; cursor:pointer}
 #image{position:absolute; inset:0; width:100%; height:100%; object-fit:contain; background:#000; display:none}
 #empty{
@@ -971,7 +973,13 @@ stage.addEventListener('dblclick', e=>{
   if(e.target === stage || e.target === video || e.target === image){ e.preventDefault(); toggleFull(); }
 });
 stage.addEventListener('wheel', e=>{
-  if(clips.length){ e.preventDefault(); adjVol(e.deltaY < 0 ? 0.05 : -0.05); }
+  if(!clips.length) return;
+  const doc = document.documentElement, down = e.deltaY > 0;
+  const scrollable = doc.scrollHeight > doc.clientHeight + 1;
+  const atEdge = down ? (doc.scrollTop + doc.clientHeight >= doc.scrollHeight - 1) : (doc.scrollTop <= 0);
+  if(scrollable && !atEdge) return;      // 页面还能滚就先让页面滚，到边界才调音量
+  e.preventDefault();
+  adjVol(down ? -0.05 : 0.05);
 }, {passive:false});
 
 /* ---------- 全屏 ---------- */
