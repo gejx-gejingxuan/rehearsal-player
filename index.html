@@ -106,14 +106,16 @@ select.ctl{padding:5px 6px}
   padding:6px; border-radius:10px; cursor:pointer; text-align:left;
   background:var(--control); border:1.5px solid var(--card-border);
   font-family:inherit; transition:background .12s, transform .12s;
+  user-select:none; -webkit-user-select:none;
 }
 .card:hover{background:var(--card-hover); transform:translateY(-1px)}
 .card.active{background:var(--active-bg); border-color:var(--c,#3e8edc)}
+.card.dragging{opacity:.4; transform:none; cursor:grabbing}
 .card .thumb{
   position:relative; width:100%; aspect-ratio:16/9; border-radius:6px; overflow:hidden;
   background:#dfe4ec; display:flex; align-items:center; justify-content:center;
 }
-.card .thumb img{width:100%; height:100%; object-fit:cover; display:block}
+.card .thumb img{width:100%; height:100%; object-fit:cover; display:block; -webkit-user-drag:none; pointer-events:none}
 .card .thumb .ph{font-size:20px; opacity:.4}
 .card .thumb .badge{
   position:absolute; left:4px; top:4px; min-width:17px; height:17px; padding:0 3px; border-radius:5px;
@@ -297,6 +299,7 @@ kbd{
     <h2>快捷键</h2>
     <table>
       <tr><td><kbd>1</kbd>～<kbd>9</kbd> / <kbd>0</kbd></td><td>切换片段</td></tr>
+      <tr><td>拖动卡片</td><td>调整播放顺序</td></tr>
       <tr><td><kbd>空格</kbd></td><td>播放 / 暂停</td></tr>
       <tr><td><kbd>F</kbd> / 双击画面</td><td>全屏</td></tr>
       <tr><td><kbd>Esc</kbd></td><td>退出全屏</td></tr>
@@ -346,6 +349,7 @@ let chain = false, loop = false, abOn = false, A = null, B = null;
 let toastTimer = null;
 let showCenter = true;
 let imgTimer = null;
+let dragCard = null, lastDragEnd = 0;
 
 /* ---------- 工具 ---------- */
 function fmt(t){
@@ -701,6 +705,7 @@ function cardEl(c, i){
   const col = palette[i % palette.length];
   const key = i < 9 ? String(i+1) : (i === 9 ? '0' : '');
   d.className = 'card' + (i === cur ? ' active' : '');
+  d.draggable = true; d.__clip = c;
   d.style.setProperty('--c', col);
   d.title = (c.label || c.name) + (c.unsupported ? '（需转码）' : '') + (key ? '（快捷键 ' + key + '）' : '');
   const th = document.createElement('span'); th.className = 'thumb';
@@ -710,7 +715,7 @@ function cardEl(c, i){
   const n = document.createElement('span'); n.className = 'name';
   d.appendChild(th); d.appendChild(n);
   fillCard(d, c);
-  d.onclick = ()=>loadClip(i, true);
+  d.onclick = ()=>{ if(Date.now() - lastDragEnd < 300) return; loadClip(i, true); };
   return d;
 }
 function fillCard(d, c){
@@ -722,7 +727,7 @@ function fillCard(d, c){
   const th = d.querySelector('.thumb');
   let img = th.querySelector('img');
   if(c.thumb){
-    if(!img){ img = document.createElement('img'); img.alt = ''; th.insertBefore(img, th.firstChild); }
+    if(!img){ img = document.createElement('img'); img.alt = ''; img.draggable = false; th.insertBefore(img, th.firstChild); }
     if(img.getAttribute('src') !== c.thumb) img.src = c.thumb;
     const ph = th.querySelector('.ph'); if(ph) ph.remove();
   } else {
@@ -733,10 +738,7 @@ function fillCard(d, c){
   }
 }
 function refreshCard(c){
-  const i = clips.indexOf(c);
-  if(i < 0) return;
-  const card = strip.children[i];
-  if(card) fillCard(card, c);
+  for(const el of strip.children){ if(el.__clip === c){ fillCard(el, c); return; } }
 }
 function renderStrip(){
   const sl = strip.scrollLeft;
@@ -1047,7 +1049,7 @@ window.addEventListener('dragenter', e=>{
 });
 window.addEventListener('dragover', e=>{
   e.preventDefault();
-  if(e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+  if(dragHasFiles(e) && e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
 });
 window.addEventListener('dragleave', e=>{
   if(!dragHasFiles(e)) return;
@@ -1058,6 +1060,7 @@ window.addEventListener('drop', e=>{
   e.preventDefault();
   dragDepth = 0;
   $('#drop').classList.remove('show');
+  if(dragCard) return;              // 卡片排序拖拽：交给 dragend 处理
   const items = e.dataTransfer && e.dataTransfer.items;
   if(items && items.length){
     const entries = [];
@@ -1072,6 +1075,55 @@ window.addEventListener('drop', e=>{
     }
   }
   addFiles(e.dataTransfer.files);
+});
+/* ---------- 卡片拖拽排序 ---------- */
+function commitOrder(){
+  const curClip = clips[cur] || null;
+  const order = [];
+  for(const el of strip.children){ if(el.__clip) order.push(el.__clip); }
+  if(order.length !== clips.length) return;
+  clips = order;
+  cur = curClip ? clips.indexOf(curClip) : -1;
+  renderStrip(); updateInfo(); syncEditBar();
+}
+strip.addEventListener('dragstart', e=>{
+  const card = e.target.closest ? e.target.closest('.card') : null;
+  if(!card || !card.__clip) return;
+  dragCard = card;
+  card.classList.add('dragging');
+  if(e.dataTransfer){
+    e.dataTransfer.effectAllowed = 'move';
+    try{
+      e.dataTransfer.setData('application/x-rp-card', String(clips.indexOf(card.__clip)));
+      e.dataTransfer.setData('text/plain', card.__clip.name || '');
+    }catch(err){}
+  }
+});
+strip.addEventListener('dragover', e=>{
+  if(!dragCard) return;
+  e.preventDefault();
+  if(e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+  const r = strip.getBoundingClientRect();
+  if(e.clientX < r.left + 46) strip.scrollLeft -= 14;
+  else if(e.clientX > r.right - 46) strip.scrollLeft += 14;
+  const over = e.target.closest ? e.target.closest('.card') : null;
+  if(!over || over === dragCard) return;
+  const b = over.getBoundingClientRect();
+  strip.insertBefore(dragCard, (e.clientX > b.left + b.width / 2) ? over.nextSibling : over);
+});
+strip.addEventListener('drop', e=>{
+  if(!dragCard) return;
+  e.preventDefault();
+  e.stopPropagation();
+  dragCard = null;
+  lastDragEnd = Date.now();
+  commitOrder();
+});
+strip.addEventListener('dragend', e=>{
+  if(!dragCard) return;
+  dragCard = null;
+  lastDragEnd = Date.now();
+  renderStrip();          // 没落在卡片条上 → 视为取消，恢复原顺序
 });
 function readEntries(entries, done){
   const out = [];
