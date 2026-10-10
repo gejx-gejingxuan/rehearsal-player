@@ -300,7 +300,8 @@ kbd{
     <button class="close" id="btnHelpClose">✕</button>
     <h2>快捷键</h2>
     <table>
-      <tr><td><kbd>1</kbd>～<kbd>9</kbd> / <kbd>0</kbd></td><td>切换片段</td></tr>
+      <tr><td><kbd>5</kbd></td><td>当前片段（从头重播）</td></tr>
+      <tr><td><kbd>4</kbd><kbd>3</kbd><kbd>2</kbd><kbd>1</kbd> / <kbd>6</kbd><kbd>7</kbd><kbd>8</kbd><kbd>9</kbd><kbd>0</kbd></td><td>前 1~4 个 / 后 1~5 个</td></tr>
       <tr><td>拖动卡片</td><td>调整播放顺序</td></tr>
       <tr><td><kbd>空格</kbd></td><td>播放 / 暂停</td></tr>
       <tr><td><kbd>F</kbd> / 双击画面</td><td>全屏</td></tr>
@@ -705,7 +706,7 @@ function analyzeClips(start, count){
 function cardEl(c, i){
   const d = document.createElement('button');
   const col = palette[i % palette.length];
-  const key = i < 9 ? String(i+1) : (i === 9 ? '0' : '');
+  const key = relKey(i);
   d.className = 'card' + (i === cur ? ' active' : '');
   d.draggable = true; d.__clip = c;
   d.style.setProperty('--c', col);
@@ -778,8 +779,7 @@ function loadClip(i, autoplay){
     if(autoplay) video.play().catch(()=>{});
   }
   renderStrip();
-  const cards = strip.children;
-  if(cards[i]) cards[i].scrollIntoView({block:'nearest', inline:'nearest'});
+  scrollCardIntoView(i);
   updateInfo();
   syncPlayIcon();
   syncEditBar();
@@ -803,8 +803,7 @@ function moveClip(delta){
   const tmp = clips[cur]; clips[cur] = clips[ni]; clips[ni] = tmp;
   cur = ni;
   renderStrip(); updateInfo(); syncEditBar();
-  const cards = strip.children;
-  if(cards[cur]) cards[cur].scrollIntoView({block:'nearest', inline:'nearest'});
+  scrollCardIntoView(cur);
 }
 function removeClip(){
   if(cur < 0) return;
@@ -831,6 +830,35 @@ function armImageTimer(){
 }
 function goTo(i){
   loadClip(i, true);
+}
+/* 只横向滚动卡片条，不带动页面上下滚 */
+function scrollCardIntoView(i){
+  const card = strip.children[i]; if(!card) return;
+  const r = card.getBoundingClientRect(), sr = strip.getBoundingClientRect();
+  if(r.left < sr.left) strip.scrollLeft -= (sr.left - r.left) + 8;
+  else if(r.right > sr.right) strip.scrollLeft += (r.right - sr.right) + 8;
+}
+/* 数字键 = 以当前片段为中心的相对切换：1~4 → 前 1~4 个，5 → 当前（重播），6~9 与 0 → 后 1~5 个 */
+function keyOffset(k){ return k === '0' ? 5 : (parseInt(k, 10) - 5); }
+function relKey(i){                   // 卡片 i 相对当前片段对应的数字键
+  if(cur < 0) return '';
+  const off = i - cur;
+  if(off === 0) return '5';
+  if(off === 5) return '0';
+  return (off >= -4 && off <= 4) ? String(5 + off) : '';
+}
+function jumpRel(off){
+  if(!clips.length) return;
+  const base = cur < 0 ? 0 : cur;
+  const ni = base + off;
+  if(ni < 0 || ni >= clips.length) return;      // 到头就不动
+  if(ni === cur){                               // 按 5 = 从头重播当前片段
+    const c = clips[cur];
+    if(c.type === 'image'){ armImageTimer(); }
+    else { try{ video.currentTime = 0; }catch(e){} video.play().catch(function(){}); }
+    return;
+  }
+  loadClip(ni, true);
 }
 function prev(){
   if(!clips.length) return;
@@ -1015,8 +1043,7 @@ window.addEventListener('keydown', e=>{
     return;
   }
   const k = e.key;
-  if(/^[1-9]$/.test(k)){ goTo(parseInt(k,10)-1); e.preventDefault(); return; }
-  if(k === '0'){ goTo(9); e.preventDefault(); return; }
+  if(/^[1-9]$/.test(k) || k === '0'){ jumpRel(keyOffset(k)); e.preventDefault(); return; }
   switch(k){
     case ' ': togglePlay(); e.preventDefault(); break;
     case 'f': case 'F': toggleFull(); break;
