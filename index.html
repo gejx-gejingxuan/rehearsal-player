@@ -86,8 +86,8 @@ body.full-f #centerPlay,body.full-f #stage{cursor:none}
 select.ctl{padding:5px 6px}
 /* ---------- 卡片条 ---------- */
 #strip{
-  display:flex; gap:10px; padding:10px 12px; overflow-x:auto; overflow-y:hidden;
-  min-height:150px; background:var(--strip);
+  display:flex; gap:8px; padding:8px 10px; overflow-x:auto; overflow-y:hidden;
+  min-height:120px; background:var(--strip);
 }
 #editBar{
   display:none; align-items:center; gap:8px; padding:8px 12px;
@@ -102,26 +102,35 @@ select.ctl{padding:5px 6px}
 .ebv{font-size:12px; color:var(--text-dim); min-width:34px; font-variant-numeric:tabular-nums}
 #editVol{width:90px; accent-color:var(--accent)}
 .card{
-  flex:0 0 200px; display:flex; flex-direction:column; align-items:flex-start; gap:8px;
-  padding:14px 16px; border-radius:12px; cursor:pointer; text-align:left;
+  flex:0 0 140px; display:flex; flex-direction:column; gap:4px;
+  padding:6px; border-radius:10px; cursor:pointer; text-align:left;
   background:var(--control); border:1.5px solid var(--card-border);
   font-family:inherit; transition:background .12s, transform .12s;
 }
 .card:hover{background:var(--card-hover); transform:translateY(-1px)}
 .card.active{background:var(--active-bg); border-color:var(--c,#3e8edc)}
-.badge{
-  width:32px; height:32px; border-radius:50%; flex:none;
-  display:flex; align-items:center; justify-content:center;
-  color:#fff; font-weight:700; font-size:15px; background:var(--c,#3e8edc);
+.card .thumb{
+  position:relative; width:100%; aspect-ratio:16/9; border-radius:6px; overflow:hidden;
+  background:#dfe4ec; display:flex; align-items:center; justify-content:center;
 }
-.card .name{font-size:14px; color:#404650; width:100%; overflow:hidden; text-overflow:ellipsis;
-  white-space:nowrap; font-weight:600}
-.card .dur{font-size:12.5px; color:#7c8492; font-variant-numeric:tabular-nums}
+.card .thumb img{width:100%; height:100%; object-fit:cover; display:block}
+.card .thumb .ph{font-size:20px; opacity:.4}
+.card .thumb .badge{
+  position:absolute; left:4px; top:4px; min-width:17px; height:17px; padding:0 3px; border-radius:5px;
+  display:flex; align-items:center; justify-content:center; box-sizing:border-box;
+  color:#fff; font-weight:700; font-size:11px; background:var(--c,#3e8edc);
+  box-shadow:0 1px 3px rgba(0,0,0,.28);
+}
+.card .thumb .dur{
+  position:absolute; right:4px; bottom:4px; padding:0 4px; border-radius:4px; line-height:15px;
+  background:rgba(20,24,30,.72); color:#fff; font-size:10.5px; font-variant-numeric:tabular-nums;
+}
+.card .name{font-size:11.5px; color:#404650; width:100%; overflow:hidden; text-overflow:ellipsis;
+  white-space:nowrap; font-weight:600; line-height:1.35}
 .card.active .name{color:#fff}
-.card.active .dur{color:#b8c0cc}
 /* ---------- 提示与帮助 ---------- */
 #toast{
-  position:fixed; left:50%; bottom:140px; transform:translateX(-50%) translateY(20px);
+  position:fixed; left:50%; bottom:112px; transform:translateX(-50%) translateY(20px);
   background:rgba(42,48,58,.92); color:#fff; padding:9px 16px; border-radius:8px;
   font-size:13px; opacity:0; pointer-events:none; transition:opacity .2s, transform .2s; z-index:60;
   max-width:80vw;
@@ -174,7 +183,17 @@ kbd{
 #busyBar{height:6px; border-radius:3px; background:#d7dce5; overflow:hidden}
 #busyBar i{display:block; height:100%; width:0; background:var(--accent); transition:width .2s}
 #busyNote{font-size:12px; color:var(--text-dim); margin-top:10px; text-align:center; min-height:16px}
-.card .dur.bad{color:#c9772b; font-weight:600}
+.card .thumb .dur.bad{background:#c9772b; font-weight:600}
+/* ---------- 拖拽提示 ---------- */
+#drop{
+  position:fixed; inset:0; display:none; align-items:center; justify-content:center;
+  background:rgba(62,142,220,.10); border:3px dashed var(--accent); z-index:90; pointer-events:none;
+}
+#drop.show{display:flex}
+#dropBox{
+  background:var(--control); border:1px solid var(--accent); color:#1f5f9e;
+  padding:14px 24px; border-radius:10px; font-size:15px; font-weight:600;
+}
 </style>
 </head>
 <body>
@@ -267,6 +286,8 @@ kbd{
     <div id="busyNote"></div>
   </div>
 </div>
+
+<div id="drop"><div id="dropBox">松开即可添加视频 / 图片</div></div>
 
 <div id="toast"></div>
 
@@ -542,8 +563,7 @@ async function convertAll(){
     };
     busySet(i / total, '转码中 ' + (i + 1) + '/' + total + '：' + c.name, '');
     ff.on('progress', onProg);
-    const idx = clips.indexOf(c);
-    try{ await transcodeToH264(ff, c); ok++; if(idx >= 0) measureDurations(idx, 1); }
+    try{ await transcodeToH264(ff, c); ok++; analyzeClip(c); }
     catch(e){ console.warn('转码失败', c.name, e); }
     ff.off('progress', onProg);
     renderStrip();
@@ -562,51 +582,167 @@ function addFiles(files, keepOrder){
   for(const f of list){
     const url = URL.createObjectURL(f);
     const type = videoExt.test(f.name) ? 'video' : 'image';
-    clips.push({ name:f.name, url, duration:NaN, type, label:null, vol:video.volume, speed:parseFloat(speedSel.value), file:f, codec:null, unsupported:null });
+    clips.push({ name:f.name, url, duration:NaN, type, label:null, vol:video.volume, speed:parseFloat(speedSel.value), file:f, codec:null, unsupported:null, thumb: type === 'image' ? url : null });
   }
   renderStrip();
-  measureDurations(clips.length - list.length, list.length);
+  analyzeClips(clips.length - list.length, list.length);
   probeClips(clips.length - list.length, list.length);
   $('#empty').style.display = 'none';
   if(cur < 0) loadClip(0, true);
 }
-function measureDurations(start, count){
+/* ---------- 缩略图 ---------- */
+function frameFlatScore(cv){
+  try{
+    const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
+    let n = 0, sum = 0, sum2 = 0;
+    for(let i = 0; i < d.length; i += 12){
+      const y = 0.299 * d[i] + 0.587 * d[i+1] + 0.114 * d[i+2];
+      sum += y; sum2 += y * y; n++;
+    }
+    if(!n) return 0;
+    const mean = sum / n;
+    return Math.sqrt(Math.max(0, sum2 / n - mean * mean));
+  }catch(e){ return 999; }
+}
+function makeVideoThumb(url){
+  return new Promise(function(resolve){
+    const MIN_SCORE = 10;                   // 画面亮度标准差低于此值视为黑场/纯色
+    const v = document.createElement('video');
+    let settled = false, waiting = false, hardTimer = null, seekTimer = null, paintTimer = null;
+    let dur = 0, plan = [], nextAt = 0, best = null;
+    function stop(){
+      if(hardTimer) clearTimeout(hardTimer);
+      if(seekTimer) clearTimeout(seekTimer);
+      if(paintTimer) clearTimeout(paintTimer);
+      try{ v.removeAttribute('src'); v.load(); }catch(e){}
+    }
+    function done(){
+      if(settled) return;
+      settled = true;
+      stop();
+      resolve({ thumb: best ? best.thumb : null, duration: (isFinite(dur) && dur > 0) ? dur : 0 });
+    }
+    function seekNext(){
+      if(settled) return;
+      if(nextAt >= plan.length) return done();
+      try{ v.currentTime = plan[nextAt++]; }catch(e){ return done(); }
+      waiting = true;
+      seekTimer = setTimeout(function(){ if(waiting) grab(); }, 1200);
+    }
+    function grab(){
+      if(settled || !waiting) return;
+      waiting = false;
+      if(seekTimer){ clearTimeout(seekTimer); seekTimer = null; }
+      if(paintTimer){ clearTimeout(paintTimer); paintTimer = null; }
+      const vw = v.videoWidth, vh = v.videoHeight;
+      if(vw && vh){
+        try{
+          const tw = 160, th = Math.max(1, Math.round(vh * tw / vw));
+          const cv = document.createElement('canvas');
+          cv.width = tw; cv.height = th;
+          cv.getContext('2d').drawImage(v, 0, 0, tw, th);
+          const score = frameFlatScore(cv);
+          if(!best || score > best.score) best = { thumb: cv.toDataURL('image/jpeg', 0.72), score: score };
+        }catch(e){}
+      }
+      if(best && best.score >= MIN_SCORE) return done();   // 画面有内容，够用了
+      seekNext();                                         // 否则换个时间点再试
+    }
+    v.onseeked = function(){
+      if(!waiting || settled) return;
+      if(seekTimer){ clearTimeout(seekTimer); seekTimer = null; }
+      if(paintTimer) clearTimeout(paintTimer);
+      paintTimer = setTimeout(grab, 90);   // 等一帧真正画出来再取像
+    };
+    hardTimer = setTimeout(done, 10000);
+    v.preload = 'metadata'; v.muted = true; v.playsInline = true;
+    v.onloadedmetadata = function(){
+      dur = v.duration;
+      if(!v.videoWidth) return done();
+      const d = (isFinite(dur) && dur > 0) ? dur : 1;
+      plan = [Math.min(Math.max(0.3, d * 0.12), 4)];
+      if(d > 6){
+        const p1 = Math.min(Math.max(plan[0] + 0.8, d * 0.4), d - 0.3);
+        plan.push(p1, Math.min(Math.max(p1 + 0.8, d * 0.7), d - 0.15));
+      }
+      seekNext();
+    };
+    v.onerror = function(){ dur = 0; done(); };
+    v.src = url;
+  });
+}
+let thumbChain = Promise.resolve();
+function enqueueThumb(task){
+  thumbChain = thumbChain.then(task).catch(function(){});
+  return thumbChain;
+}
+function analyzeClip(c){
+  if(!c || c.type !== 'video') return;
+  c.thumb = null;
+  refreshCard(c);
+  enqueueThumb(function(){
+    return makeVideoThumb(c.url).then(function(res){
+      if(res.duration) c.duration = res.duration;
+      if(res.thumb) c.thumb = res.thumb;
+      refreshCard(c);
+    });
+  });
+}
+function analyzeClips(start, count){
   for(let i = start; i < start + count; i++){
-    if(!clips[i] || clips[i].type !== 'video') continue;
-    (function(idx){
-      const el = document.createElement('video');
-      el.preload = 'metadata'; el.muted = true;
-      el.onloadedmetadata = function(){
-        clips[idx].duration = el.duration;
-        renderStrip();
-        el.removeAttribute('src'); el.load();
-      };
-      el.onerror = function(){ el.removeAttribute('src'); };
-      el.src = clips[idx].url;
-    })(i);
+    const c = clips[i];
+    if(c && c.type === 'video') analyzeClip(c);
   }
 }
 
 /* ---------- 卡片底栏 ---------- */
+function cardEl(c, i){
+  const d = document.createElement('button');
+  const col = palette[i % palette.length];
+  const key = i < 9 ? String(i+1) : (i === 9 ? '0' : '');
+  d.className = 'card' + (i === cur ? ' active' : '');
+  d.style.setProperty('--c', col);
+  d.title = (c.label || c.name) + (c.unsupported ? '（需转码）' : '') + (key ? '（快捷键 ' + key + '）' : '');
+  const th = document.createElement('span'); th.className = 'thumb';
+  const b = document.createElement('span'); b.className = 'badge'; b.textContent = String(i+1);
+  const t = document.createElement('span'); t.className = 'dur';
+  th.appendChild(b); th.appendChild(t);
+  const n = document.createElement('span'); n.className = 'name';
+  d.appendChild(th); d.appendChild(n);
+  fillCard(d, c);
+  d.onclick = ()=>loadClip(i, true);
+  return d;
+}
+function fillCard(d, c){
+  d.querySelector('.name').textContent = c.label || c.name;
+  const t = d.querySelector('.thumb .dur');
+  if(c.type === 'image'){ t.className = 'dur'; t.textContent = '图片'; }
+  else if(c.unsupported){ t.className = 'dur bad'; t.textContent = '需转码'; }
+  else { t.className = 'dur'; t.textContent = isFinite(c.duration) ? fmt(c.duration) : '--:--'; }
+  const th = d.querySelector('.thumb');
+  let img = th.querySelector('img');
+  if(c.thumb){
+    if(!img){ img = document.createElement('img'); img.alt = ''; th.insertBefore(img, th.firstChild); }
+    if(img.getAttribute('src') !== c.thumb) img.src = c.thumb;
+    const ph = th.querySelector('.ph'); if(ph) ph.remove();
+  } else {
+    if(img) img.remove();
+    if(!th.querySelector('.ph')){
+      const ph = document.createElement('span'); ph.className = 'ph'; ph.textContent = '🎬'; th.insertBefore(ph, th.firstChild);
+    }
+  }
+}
+function refreshCard(c){
+  const i = clips.indexOf(c);
+  if(i < 0) return;
+  const card = strip.children[i];
+  if(card) fillCard(card, c);
+}
 function renderStrip(){
+  const sl = strip.scrollLeft;
   strip.innerHTML = '';
-  clips.forEach((c,i)=>{
-    const d = document.createElement('button');
-    const col = palette[i % palette.length];
-    const key = i < 9 ? String(i+1) : (i === 9 ? '0' : '');
-    d.className = 'card' + (i === cur ? ' active' : '');
-    d.style.setProperty('--c', col);
-    d.title = (c.label || c.name) + (key ? '（快捷键 ' + key + '）' : '');
-    const b = document.createElement('span'); b.className='badge'; b.textContent = String(i+1);
-    const n = document.createElement('span'); n.className='name'; n.textContent = c.label || c.name;
-    const t = document.createElement('span'); t.className='dur';
-    if(c.type === 'image'){ t.textContent = '图片'; }
-    else if(c.unsupported){ t.className = 'dur bad'; t.textContent = (codecName(c.codec) ? codecName(c.codec) + ' · ' : '') + '需转码'; }
-    else { t.textContent = isFinite(c.duration) ? fmt(c.duration) : '--:--'; }
-    d.appendChild(b); d.appendChild(n); d.appendChild(t);
-    d.onclick = ()=>loadClip(i, true);
-    strip.appendChild(d);
-  });
+  clips.forEach((c,i)=>{ strip.appendChild(cardEl(c,i)); });
+  strip.scrollLeft = sl;
   markConvertBtn();
 }
 
@@ -896,9 +1032,32 @@ window.addEventListener('mousedown', e=>{
 });
 window.addEventListener('contextmenu', e=>{ if(e.altKey) e.preventDefault(); });
 
-window.addEventListener('dragover', e=>{ e.preventDefault(); });
+let dragDepth = 0;
+function dragHasFiles(e){
+  const dt = e.dataTransfer;
+  if(!dt || !dt.types) return false;
+  for(let i = 0; i < dt.types.length; i++){ if(dt.types[i] === 'Files') return true; }
+  return false;
+}
+window.addEventListener('dragenter', e=>{
+  if(!dragHasFiles(e)) return;
+  e.preventDefault();
+  dragDepth++;
+  $('#drop').classList.add('show');
+});
+window.addEventListener('dragover', e=>{
+  e.preventDefault();
+  if(e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+});
+window.addEventListener('dragleave', e=>{
+  if(!dragHasFiles(e)) return;
+  dragDepth = Math.max(0, dragDepth - 1);
+  if(dragDepth === 0) $('#drop').classList.remove('show');
+});
 window.addEventListener('drop', e=>{
   e.preventDefault();
+  dragDepth = 0;
+  $('#drop').classList.remove('show');
   const items = e.dataTransfer && e.dataTransfer.items;
   if(items && items.length){
     const entries = [];
