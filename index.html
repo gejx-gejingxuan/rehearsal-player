@@ -100,8 +100,8 @@ body.full-f #centerPlay,body.full-f #stage{cursor:none}
 select.ctl{padding:5px 6px}
 /* ---------- 卡片条 ---------- */
 #strip{
-  display:flex; gap:8px; padding:8px 10px; overflow-x:auto; overflow-y:hidden;
-  min-height:120px; background:var(--strip);
+  display:flex; align-items:stretch; gap:8px; padding:8px 10px; overflow-x:auto; overflow-y:hidden;
+  min-height:calc(var(--card-w,140px) * .86); background:var(--strip);
 }
 #editBar{
   display:none; align-items:center; gap:8px; padding:8px 12px;
@@ -116,7 +116,7 @@ select.ctl{padding:5px 6px}
 .ebv{font-size:12px; color:var(--text-dim); min-width:34px; font-variant-numeric:tabular-nums}
 #editVol{width:90px; accent-color:var(--accent)}
 .card{
-  flex:0 0 140px; display:flex; flex-direction:column; gap:4px;
+  flex:0 0 var(--card-w,140px); display:flex; flex-direction:column; gap:4px;
   padding:6px; border-radius:10px; cursor:pointer; text-align:left;
   background:var(--control); border:1.5px solid var(--card-border);
   font-family:inherit; transition:background .12s, transform .12s;
@@ -169,7 +169,7 @@ kbd{
   background:var(--strip); border:1px solid var(--border); border-bottom-width:2px;
   border-radius:5px; padding:1px 7px; font-family:inherit; font-size:12px; white-space:nowrap;
 }
-#helpBox .close{float:right; border:0; background:none; font-size:20px; cursor:pointer; color:var(--text-dim)}
+#helpBox .close,#settingsBox .close{float:right; border:0; background:none; font-size:20px; line-height:1; padding:0; cursor:pointer; color:var(--text-dim)}
 #settings{
   position:fixed; inset:0; background:rgba(15,18,22,.55); display:none;
   align-items:center; justify-content:center; z-index:70;
@@ -177,10 +177,11 @@ kbd{
 #settings.show{display:flex}
 #settingsBox{
   background:var(--control); border:1px solid var(--border); border-radius:12px;
-  padding:22px 26px; width:380px; max-width:92vw;
+  padding:22px 26px; width:430px; max-width:92vw;
 }
 #settingsBox h2{font-size:17px; margin-bottom:6px}
 .setRow{display:flex; align-items:center; justify-content:space-between; padding:11px 2px; border-bottom:1px solid var(--strip); font-size:14px; gap:14px}
+.setRow>span{white-space:nowrap}
 .switch{
   width:44px; height:24px; flex:none; border-radius:12px; border:1px solid var(--border);
   background:#d7dce5; position:relative; cursor:pointer; padding:0; transition:background .15s;
@@ -191,6 +192,13 @@ kbd{
 }
 .switch.on{background:var(--accent); border-color:var(--accent)}
 .switch.on::after{left:22px}
+.setCtl{display:flex; align-items:center; gap:8px}
+.setCtl input[type=range]{width:120px; accent-color:var(--accent); cursor:pointer}
+.mini{
+  border:1px solid var(--border); background:var(--control); color:var(--text-dim);
+  font-size:11.5px; padding:3px 9px; border-radius:6px; cursor:pointer; font-family:inherit;
+}
+.mini:hover{background:var(--card-hover); color:var(--text)}
 /* ---------- 转码 ---------- */
 #busy{position:fixed; inset:0; background:rgba(15,18,22,.45); display:none; align-items:center; justify-content:center; z-index:80}
 #busy.show{display:flex}
@@ -336,6 +344,14 @@ kbd{
       <span>画面中央暂停图标</span>
       <button class="switch" id="swCenter" role="switch" aria-label="画面中央暂停图标"></button>
     </div>
+    <div class="setRow">
+      <span>片段卡片大小</span>
+      <span class="setCtl">
+        <input type="range" id="setCardW" min="90" max="260" step="5" aria-label="片段卡片大小">
+        <span class="ebv" id="setCardWVal">140px</span>
+        <button class="mini" id="btnCardWReset" title="还原默认大小">还原</button>
+      </span>
+    </div>
   </div>
 </div>
 
@@ -366,6 +382,8 @@ let toastTimer = null;
 let showCenter = true;
 let stageH = null;                 // 视频区自定义高度（px），null = 用默认高度
 const STAGE_MIN = 140, STAGE_MAX = 3000;   // 视频区拖动范围（必须在 loadPrefs 之前声明）
+let cardW = 140;                   // 片段卡片宽度（px），所有卡片统一
+const CARD_W_MIN = 90, CARD_W_MAX = 260, CARD_W_DEF = 140;   // 卡片宽度范围（必须在 loadPrefs 之前声明）
 let imgTimer = null;
 let dragCard = null, lastDragEnd = 0;
 
@@ -384,7 +402,7 @@ function toast(msg){
 }
 function savePrefs(){
   try{ localStorage.setItem('rp_prefs', JSON.stringify({
-    speed: speedSel.value, chain, loop, abOn, vol: volume.value, showCenter, stageH
+    speed: speedSel.value, chain, loop, abOn, vol: volume.value, showCenter, stageH, cardW
   })); }catch(e){}
 }
 function loadPrefs(){
@@ -394,6 +412,7 @@ function loadPrefs(){
     chain = !!p.chain; loop = !!p.loop; abOn = !!p.abOn;
     showCenter = p.showCenter !== false;
     if(p.stageH) applyStageH(p.stageH, true);
+    if(p.cardW) applyCardW(p.cardW, true);
     volume.value = (p.vol == null) ? 80 : p.vol;
   }catch(e){}
 }
@@ -1056,6 +1075,19 @@ stageGrip.addEventListener('pointerup', gripEnd);
 stageGrip.addEventListener('pointercancel', gripEnd);
 stageGrip.addEventListener('dblclick', e=>{ e.preventDefault(); e.stopPropagation(); applyStageH(null); });
 
+/* ---------- 片段卡片大小（设置页可调，全部卡片统一固定） ---------- */
+function applyCardW(w, silent){
+  const v = Number(w);
+  cardW = Math.round(Math.max(CARD_W_MIN, Math.min(CARD_W_MAX, isFinite(v) && v > 0 ? v : CARD_W_DEF)));
+  strip.style.setProperty('--card-w', cardW + 'px');
+  syncCardWUI();
+  if(!silent) savePrefs();
+}
+function syncCardWUI(){
+  const r = $('#setCardW'); if(r) r.value = String(cardW);
+  const v = $('#setCardWVal'); if(v) v.textContent = cardW + 'px';
+}
+
 /* ---------- 全屏 ---------- */
 function isFs(el){ return document.fullscreenElement === el; }
 function toggleFull(){
@@ -1390,15 +1422,17 @@ $('#btnSetB').onclick = setB;
 $('#btnClearAB').onclick = clearAB;
 $('#btnConvert').onclick = convertAll;
 $('#btnHelp').onclick = ()=>$('#help').classList.add('show');
-$('#btnSettings').onclick = ()=>{ syncCenterToggle(); $('#settings').classList.add('show'); };
+$('#btnSettings').onclick = ()=>{ syncCenterToggle(); syncCardWUI(); $('#settings').classList.add('show'); };
 $('#btnSettingsClose').onclick = ()=>$('#settings').classList.remove('show');
 $('#settings').addEventListener('click', e=>{ if(e.target === $('#settings')) $('#settings').classList.remove('show'); });
 $('#swCenter').onclick = ()=>{ showCenter = !showCenter; syncCenterToggle(); savePrefs(); };
+$('#setCardW').oninput = e=>applyCardW(+e.target.value);
+$('#btnCardWReset').onclick = ()=>applyCardW(CARD_W_DEF);
 $('#btnHelpClose').onclick = ()=>$('#help').classList.remove('show');
 $('#help').addEventListener('click', e=>{ if(e.target === $('#help')) $('#help').classList.remove('show'); });
 
 /* ---------- 初始化 ---------- */
-syncVol(); syncPlayIcon(); syncToggles(); syncCenterToggle();
+syncVol(); syncPlayIcon(); syncToggles(); syncCenterToggle(); syncCardWUI();
 window.addEventListener('beforeunload', ()=>{
   clips.forEach(c=>{ try{ URL.revokeObjectURL(c.url); }catch(e){} });
 });
