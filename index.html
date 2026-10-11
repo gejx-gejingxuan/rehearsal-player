@@ -745,6 +745,7 @@ function cardEl(c, i){
   d.className = 'card' + (i === cur ? ' active' : '');
   d.draggable = true; d.__clip = c;
   d.style.setProperty('--c', col);
+  d.style.width = cardW + 'px';   // 内联宽度兜底：不依赖 CSS 变量支持
   d.title = (c.label || c.name) + (c.unsupported ? '（需转码）' : '') + (key ? '（快捷键 ' + key + '）' : '');
   const th = document.createElement('span'); th.className = 'thumb';
   const b = document.createElement('span'); b.className = 'badge'; b.textContent = String(i+1);
@@ -1080,6 +1081,7 @@ function applyCardW(w, silent){
   const v = Number(w);
   cardW = Math.round(Math.max(CARD_W_MIN, Math.min(CARD_W_MAX, isFinite(v) && v > 0 ? v : CARD_W_DEF)));
   strip.style.setProperty('--card-w', cardW + 'px');
+  for(const el of strip.querySelectorAll('.card')) el.style.width = cardW + 'px';
   syncCardWUI();
   if(!silent) savePrefs();
 }
